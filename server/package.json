@@ -1,0 +1,10 @@
+{
+  "name": "prueba-server-gamemaker",
+  "version": "1.0.0",
+  "description": "Servidor de lobby + chat para el juego online de GameMaker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
