@@ -55,6 +55,13 @@ Para actualizar después de un cambio, basta con volver a correr
 
 Logs del servidor: `journalctl -u gamemaker-server -f`
 
+> **Nota (firewall):** el VPS usa HestiaCP, que maneja su propio firewall
+> iptables (las reglas de `ufw` NO tienen efecto). El puerto ya quedó abierto
+> con:
+> ```bash
+> sudo /usr/local/hestia/bin/v-add-firewall-rule ACCEPT 0.0.0.0/0 6510 TCP juego-gamemaker
+> ```
+
 ## Próximos pasos (plan)
 
 1. **Chat** ✅ (esta etapa)
