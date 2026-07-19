@@ -41,6 +41,7 @@
   "resources":[
     {"id":{"name":"obj_camera","path":"objects/obj_camera/obj_camera.yy",},},
     {"id":{"name":"obj_client","path":"objects/obj_client/obj_client.yy",},},
+    {"id":{"name":"obj_explosion","path":"objects/obj_explosion/obj_explosion.yy",},},
     {"id":{"name":"obj_fighter","path":"objects/obj_fighter/obj_fighter.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_ki_blast","path":"objects/obj_ki_blast/obj_ki_blast.yy",},},

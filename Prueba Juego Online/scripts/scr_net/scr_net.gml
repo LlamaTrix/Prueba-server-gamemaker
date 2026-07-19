@@ -23,6 +23,7 @@
 #macro MSG_KI_STATE     17
 #macro MSG_DASH         18
 #macro MSG_DASH_STATE   19
+#macro MSG_KI_HIT       20
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -154,6 +155,16 @@ function net_send_dash(_state, _direction) {
     var _payload = buffer_create(2, buffer_fixed, 1);
     buffer_write(_payload, buffer_u8, MSG_DASH);
     buffer_write(_payload, buffer_s8, _direction);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+/// Reporta que nuestra onda de ki impactó a un jugador. El servidor valida y aplica daño.
+function net_send_ki_hit(_state, _target_uid) {
+    var _payload = buffer_create(3, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_KI_HIT);
+    buffer_write(_payload, buffer_u16, _target_uid);
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;

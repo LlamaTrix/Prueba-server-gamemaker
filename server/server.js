@@ -42,6 +42,7 @@ const MSG_KI_FIRE = 16;      // cliente -> servidor: u8 disparo frontal
 const MSG_KI_STATE = 17;     // servidor -> clientes: u16 uid + u8 estado
 const MSG_DASH = 18;         // cliente -> servidor: s8 dirección lateral
 const MSG_DASH_STATE = 19;   // servidor -> clientes: u16 uid + u16 x + u16 y + s8 dirección
+const MSG_KI_HIT = 20;       // cliente -> servidor: u16 objetivo (impacto de onda de ki)
 const DASH_COOLDOWN_MS = 1000;
 const DASH_DISTANCE = 30;
 
@@ -108,18 +109,6 @@ function broadcastPosition(c) {
 
 function broadcastStats(c) {
   broadcast(new Writer().u8(MSG_STATS).u16(c.uid).u8(c.health).u8(c.ki));
-}
-
-function findKiTarget(attacker) {
-  let best = null;
-  let bestForward = Infinity;
-  for (const candidate of clients.values()) {
-    if (candidate.name === null || candidate.uid === attacker.uid) continue;
-    const forward = (candidate.x - attacker.x) * attacker.facing;
-    if (forward <= 0 || forward > 280 || Math.abs(candidate.y - attacker.y) > 55) continue;
-    if (forward < bestForward) { best = candidate; bestForward = forward; }
-  }
-  return best;
 }
 
 function applyDamage(target, damage) {
@@ -260,12 +249,25 @@ function handleMessage(socket, payload) {
     c.ki -= 5;
     const forwardBlast = payload.readUInt8(1) !== 0;
     broadcastStats(c);
+    // Solo dispara la animación; el daño lo aplica el impacto real del proyectil (MSG_KI_HIT).
     broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(forwardBlast ? 3 : 2));
-    const target = findKiTarget(c);
-    if (target) {
-      applyDamage(target, 3);
-      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0));
+
+  } else if (msg === MSG_KI_HIT && c.name !== null && payload.length >= 3) {
+    // El cliente que lanzó la onda avisa que impactó a alguien. El servidor valida y aplica daño.
+    const now = Date.now();
+    if (now - (c.lastKiHitAt || 0) < 60) return; // una onda golpea una sola vez
+    const targetUid = payload.readUInt16LE(1);
+    let target = null;
+    for (const t of clients.values()) {
+      if (t.name !== null && t.uid === targetUid) { target = t; break; }
     }
+    if (!target || target.uid === c.uid) return;
+    // Anti-trampa: el objetivo debe estar a un rango plausible del atacante.
+    if (Math.hypot(target.x - c.x, target.y - c.y) > 360) return;
+    c.lastKiHitAt = now;
+    applyDamage(target, 3);
+    broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0));
+    console.log(`[ki-hit] ${c.name} -> ${target.name} (vida ${target.health})`);
 
   } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
     const now = Date.now();
@@ -316,6 +318,7 @@ const server = net.createServer(socket => {
     ki: 0,
     kiCharging: false,
     lastKiFireAt: 0,
+    lastKiHitAt: 0,
     lastDashAt: 0
   });
   console.log(`[~] conexión desde ${socket.remoteAddress}`);

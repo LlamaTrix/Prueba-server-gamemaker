@@ -25,7 +25,16 @@ function fighter_spawn_ki_blast(_f) {
     var _blast = instance_create_layer(_f.x + _f.facing * 38, _f.y - 34, "Instances", obj_ki_blast);
     _blast.travel_direction = _f.facing;
     _blast.image_xscale = 2 * _f.facing;
+    // El proyectil recuerda quién lo lanzó: solo el jugador local reporta el
+    // impacto al servidor (así el daño se cuenta una sola vez).
+    _blast.owner_instance = _f;
+    _blast.owner_is_local = (_f.object_index == obj_player);
     return _blast;
+}
+
+/// Estallido celeste en (x, y). Efecto visual, sin lógica de daño.
+function fighter_spawn_explosion(_x, _y) {
+    return instance_create_layer(_x, _y, "Instances", obj_explosion);
 }
 
 function fighter_init(_f) {
