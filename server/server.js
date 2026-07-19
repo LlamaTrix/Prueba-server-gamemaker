@@ -287,9 +287,10 @@ function handleMessage(socket, payload) {
       applyDamage(target, damage);
       // El servidor mueve también la posición autoritativa para que el empuje
       // sea visible de forma consistente tanto en escritorio como en HTML5.
-      if (kind === 2) target.x = Math.max(20, Math.min(1980, target.x + c.facing * (30 + charge)));
-      if (kind === 3) target.y = Math.max(48, Math.min(1990, target.y - (30 + charge)));
-      if (kind === 4) target.y = Math.max(48, Math.min(1990, target.y + (30 + charge)));
+      // Empuje 200% más fuerte (x3) que el valor base.
+      if (kind === 2) target.x = Math.max(20, Math.min(1980, target.x + c.facing * (30 + charge) * 3));
+      if (kind === 3) target.y = Math.max(48, Math.min(1990, target.y - (30 + charge) * 3));
+      if (kind === 4) target.y = Math.max(48, Math.min(1990, target.y + (30 + charge) * 3));
       broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge).u8(target.health).u16(target.x).u16(target.y));
       if (kind !== 1) broadcastPosition(target);
       console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
