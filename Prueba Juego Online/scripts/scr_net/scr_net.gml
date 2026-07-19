@@ -18,6 +18,9 @@ function net_send(_sock, _payload) {
     var _out = buffer_create(_len + 2, buffer_fixed, 1);
     buffer_write(_out, buffer_u16, _len);
     buffer_copy(_payload, 0, _len, _out, 2);
+    // OJO: network_send_raw envía desde la posición actual del buffer,
+    // hay que volver al inicio para que salga el prefijo de largo
+    buffer_seek(_out, buffer_seek_start, 0);
     network_send_raw(_sock, _out, _len + 2);
     buffer_delete(_out);
 }

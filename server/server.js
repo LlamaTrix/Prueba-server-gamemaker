@@ -113,6 +113,9 @@ const server = net.createServer(socket => {
   socket.on('data', chunk => {
     const c = clients.get(socket);
     if (!c) return;
+    if (c.name === null) {
+      console.log(`[debug] primeros bytes de ${socket.remoteAddress}: ${chunk.subarray(0, 24).toString('hex')}`);
+    }
     c.inbuf = Buffer.concat([c.inbuf, chunk]);
     if (c.inbuf.length > 64 * 1024) { socket.destroy(); return; } // anti-flood
 
