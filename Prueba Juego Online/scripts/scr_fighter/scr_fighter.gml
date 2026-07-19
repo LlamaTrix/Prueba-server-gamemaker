@@ -28,8 +28,8 @@ function fighter_init(_f) {
     _f.combo_input_after = 10;
     _f.strong_duration = 30;
     _f.strong_charge_max = 60;
-    _f.strong_charge_step = 20;
-    _f.strong_base_push = 6;
+    _f.strong_charge_step = 10;
+    _f.strong_base_push = 8;
     _f.strong_charge_push_bonus = 2;
 
     _f.move_speed = 2.5;
@@ -42,6 +42,7 @@ function fighter_init(_f) {
     _f.combo_stage = 0; _f.combo_timer = 0; _f.combo_queued = false; _f.combo_hit = false;
     _f.turn_frames = 0; _f.pending_facing = 1;
     _f.bubble_text = ""; _f.bubble_timer = 0;
+    _f.remote_controlled = false;
     _f.image_speed = 0; _f.image_xscale = 2; _f.image_yscale = 2;
 }
 

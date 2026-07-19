@@ -16,6 +16,7 @@
 #macro MSG_BUBBLE      10
 #macro MSG_ATTACK      11
 #macro MSG_HIT         12
+#macro MSG_ATTACK_STATE 13
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -114,11 +115,12 @@ function net_send_position(_state, _x, _y, _facing) {
     return _ok;
 }
 
-function net_send_attack(_state, _kind, _charge_level) {
-    var _payload = buffer_create(3, buffer_fixed, 1);
+function net_send_attack(_state, _kind, _charge_level, _combo_stage) {
+    var _payload = buffer_create(4, buffer_fixed, 1);
     buffer_write(_payload, buffer_u8, MSG_ATTACK);
     buffer_write(_payload, buffer_u8, _kind);
     buffer_write(_payload, buffer_u8, clamp(_charge_level, 0, 3));
+    buffer_write(_payload, buffer_u8, clamp(_combo_stage, 0, 3));
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;
@@ -245,6 +247,24 @@ function net_read_payload(_state, _payload) {
             }
             if (_hit_target != noone) {
                 fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge);
+            }
+            break;
+
+        case MSG_ATTACK_STATE:
+            var _attacker_uid = buffer_read(_payload, buffer_u16);
+            var _attacker_kind = buffer_read(_payload, buffer_u8);
+            var _attacker_stage = buffer_read(_payload, buffer_u8);
+            if (_attacker_uid != _state.uid) {
+                var _attacker = net_find_remote(_attacker_uid);
+                if (_attacker != noone) {
+                    _attacker.attack_kind = _attacker_kind;
+                    _attacker.combo_stage = _attacker_stage;
+                    _attacker.combo_timer = (_attacker_stage == 1) ? _attacker.combo_duration_1
+                        : (_attacker_stage == 2) ? _attacker.combo_duration_2
+                        : (_attacker_stage == 3) ? _attacker.combo_duration_3
+                        : _attacker.strong_duration;
+                    _attacker.combo_hit = true;
+                }
             }
             break;
 

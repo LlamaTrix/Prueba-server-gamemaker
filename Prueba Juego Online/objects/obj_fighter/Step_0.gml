@@ -2,8 +2,10 @@ var _was_stunned = stun_frames > 0;
 if (bubble_timer > 0) bubble_timer -= 1;
 if (_was_stunned) {
     stun_frames -= 1;
-    hsp = knockback_x; vsp = knockback_y;
-    knockback_x *= 0.82; knockback_y *= 0.82;
+    if (!remote_controlled) {
+        hsp = knockback_x; vsp = knockback_y;
+        knockback_x *= 0.82; knockback_y *= 0.82;
+    }
 }
 
 var _nx = clamp(x + hsp, 20, room_width - 20);

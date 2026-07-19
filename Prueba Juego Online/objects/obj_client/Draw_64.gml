@@ -27,11 +27,6 @@ if (instance_number(obj_player) > 0) {
     draw_set_color(c_white);
     draw_text(390, 10, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
     draw_set_halign(fa_left);
-    if (_player.charging) {
-        var _charge_level = floor(_player.charge_frames / _player.strong_charge_step);
-        draw_set_color(c_yellow);
-        draw_text(10, 40, "Carga vertical: " + string(_player.charge_frames) + "/60  (empuje +" + string(_charge_level) + ")");
-    }
 }
 
 draw_set_color(c_white);

@@ -35,6 +35,7 @@ const MSG_POS = 9;     // posición y dirección de un jugador
 const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
 const MSG_ATTACK = 11; // cliente -> servidor: u8 tipo + u8 nivel de carga
 const MSG_HIT = 12;    // servidor -> clientes: u16 objetivo + u8 tipo + s8 dirección + u8 carga
+const MSG_ATTACK_STATE = 13; // servidor -> clientes: u16 atacante + u8 tipo + u8 fase
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -197,7 +198,11 @@ function handleMessage(socket, payload) {
     const kind = payload.readUInt8(1);
     if (kind < 1 || kind > 4) return;
     let charge = Math.min(3, payload.readUInt8(2));
+    const comboStage = payload.length >= 4 ? Math.min(3, payload.readUInt8(3)) : 0;
     if (kind === 1 || kind === 2) charge = 0;
+
+    // Todos ven la animación del atacante, incluso cuando el golpe no alcanza a nadie.
+    broadcast(new Writer().u8(MSG_ATTACK_STATE).u16(c.uid).u8(kind).u8(comboStage));
 
     const target = findAttackTarget(c, kind);
     if (target) {

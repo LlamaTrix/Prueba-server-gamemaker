@@ -57,7 +57,7 @@ if (!_chat_blocked && stun_frames <= 0) {
 
         if (!combo_hit) {
             with (obj_client) {
-                if (net.session_ready) net_send_attack(net, other.attack_kind, other.attack_charge_level);
+                if (net.session_ready) net_send_attack(net, other.attack_kind, other.attack_charge_level, other.combo_stage);
             }
             combo_hit = true;
         }

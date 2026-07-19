@@ -38,6 +38,7 @@ strings = UTF-8 terminados en NUL (formato buffer_string de GameMaker)
 | 10 | `MSG_BUBBLE` | servidor → clientes | UID + texto para la burbuja de chat |
 | 11 | `MSG_ATTACK` | cliente → servidor | tipo de golpe + nivel de carga |
 | 12 | `MSG_HIT` | servidor → clientes | UID objetivo + golpe, dirección y carga |
+| 13 | `MSG_ATTACK_STATE` | servidor → clientes | UID atacante + tipo y fase de animación |
 
 El servidor marca al jugador como `[AFK]` tras 60 segundos sin movimiento. Si
 no vuelve a moverse durante los 20 segundos siguientes, lo expulsa y cierra su
