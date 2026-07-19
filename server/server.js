@@ -165,25 +165,35 @@ function applyDamage(target, damage) {
 }
 
 function findAttackTarget(attacker, kind) {
-  const vertical = kind === 3 || kind === 4;
-  // Alcance corto y radios amplios: el golpe conecta al estar cerca, incluso
-  // a quemarropa. Antes el golpe normal (Z) fallaba pegado al rival porque la
-  // hitbox quedaba 42px por delante con solo 15px de radio.
-  const hitX = attacker.x + attacker.facing * (vertical ? 24 : 30);
-  const hitY = attacker.y + (kind === 3 ? -55 : kind === 4 ? -18 : -40);
-  const hitRadius = kind === 1 ? 36 : 42;
+  // Radio generoso alrededor del atacante con un leve sesgo hacia adelante.
+  // Así el golpe conecta de forma fiable al estar cerca, tolerando la latencia
+  // y sin exigir un facing perfecto (antes la hitbox estrecha fallaba pegado).
+  const cx = attacker.x + attacker.facing * 25;
+  const cy = attacker.y;
+  const reach = 95;
   let best = null;
   let bestDistance = Infinity;
 
   for (const candidate of clients.values()) {
     if (candidate.name === null || candidate.uid === attacker.uid) continue;
-    const distance = Math.hypot(candidate.x - hitX, (candidate.y - 40) - hitY);
-    if (distance <= hitRadius + 26 && distance < bestDistance) {
+    const distance = Math.hypot(candidate.x - cx, candidate.y - cy);
+    if (distance <= reach && distance < bestDistance) {
       best = candidate;
       bestDistance = distance;
     }
   }
   return best;
+}
+
+// Rival más cercano a un jugador (para diagnosticar golpes fallados).
+function nearestOpponent(c) {
+  let nd = Infinity, nn = null;
+  for (const o of clients.values()) {
+    if (o.name === null || o.uid === c.uid) continue;
+    const d = Math.hypot(o.x - c.x, o.y - c.y);
+    if (d < nd) { nd = d; nn = o.name; }
+  }
+  return { name: nn, dist: nd };
 }
 
 function systemChat(text) {
@@ -308,7 +318,7 @@ function handleMessage(socket, payload) {
 
     const target = findAttackTarget(c, kind);
     if (target) {
-      const damage = kind === 1 ? 3 : 5 + charge;
+      const damage = kind === 1 ? 8 : 15 + charge * 2;
       applyDamage(target, damage);
       // El servidor mueve también la posición autoritativa para que el empuje
       // sea visible de forma consistente tanto en escritorio como en HTML5.
@@ -318,7 +328,10 @@ function handleMessage(socket, payload) {
       if (kind === 4) target.y = Math.max(48, Math.min(1990, target.y + (30 + charge) * 3));
       broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge).u8(target.health).u16(target.x).u16(target.y));
       if (kind !== 1) broadcastPosition(target);
-      console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
+      console.log(`[hit] ${c.name} -> ${target.name} tipo ${kind} dmg ${damage} vida ${target.health}`);
+    } else {
+      const near = nearestOpponent(c);
+      console.log(`[miss] ${c.name} (${Math.round(c.x)},${Math.round(c.y)} f${c.facing}) atacó tipo ${kind}; rival más cercano ${near.name || 'ninguno'} a ${Number.isFinite(near.dist) ? Math.round(near.dist) : '-'}px`);
     }
 
   } else if (msg === MSG_KI_CHARGE && c.name !== null && payload.length >= 2) {
