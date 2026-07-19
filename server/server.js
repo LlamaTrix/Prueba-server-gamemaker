@@ -146,9 +146,12 @@ function applyDamage(target, damage) {
 
 function findAttackTarget(attacker, kind) {
   const vertical = kind === 3 || kind === 4;
-  const hitX = attacker.x + attacker.facing * (vertical ? 32 : 42);
-  const hitY = attacker.y + (kind === 3 ? -62 : kind === 4 ? -18 : -40);
-  const hitRadius = kind === 1 ? 15 : 19;
+  // Alcance corto y radios amplios: el golpe conecta al estar cerca, incluso
+  // a quemarropa. Antes el golpe normal (Z) fallaba pegado al rival porque la
+  // hitbox quedaba 42px por delante con solo 15px de radio.
+  const hitX = attacker.x + attacker.facing * (vertical ? 24 : 30);
+  const hitY = attacker.y + (kind === 3 ? -55 : kind === 4 ? -18 : -40);
+  const hitRadius = kind === 1 ? 36 : 42;
   let best = null;
   let bestDistance = Infinity;
 
