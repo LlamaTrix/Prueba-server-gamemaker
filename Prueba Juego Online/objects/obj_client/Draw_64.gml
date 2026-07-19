@@ -29,6 +29,35 @@ if (instance_number(obj_player) > 0) {
     draw_set_halign(fa_left);
 }
 
+// ---- minimapa 100x100 en la esquina inferior izquierda ----
+var _mm = 100;
+var _mx = 6;
+var _my = 400 - _mm - 6; // pegado abajo con un pequeño margen
+draw_set_alpha(0.75);
+draw_set_color(make_color_rgb(10, 14, 22));
+draw_rectangle(_mx, _my, _mx + _mm, _my + _mm, false);
+draw_set_alpha(1);
+draw_set_color(make_color_rgb(60, 70, 90));
+draw_rectangle(_mx, _my, _mx + _mm, _my + _mm, true);
+
+// otros jugadores en rojo
+for (var _i = 0; _i < instance_number(obj_remote); _i++) {
+    var _r = instance_find(obj_remote, _i);
+    var _rx = _mx + clamp(_r.x / room_width, 0, 1) * _mm;
+    var _ry = _my + clamp(_r.y / room_height, 0, 1) * _mm;
+    draw_set_color(c_red);
+    draw_circle(_rx, _ry, 2.5, false);
+}
+
+// tú, en azul
+if (instance_number(obj_player) > 0) {
+    var _pl = instance_find(obj_player, 0);
+    var _plx = _mx + clamp(_pl.x / room_width, 0, 1) * _mm;
+    var _ply = _my + clamp(_pl.y / room_height, 0, 1) * _mm;
+    draw_set_color(make_color_rgb(60, 140, 255));
+    draw_circle(_plx, _ply, 3, false);
+}
+
 draw_set_color(c_white);
 if (chat_open) {
     draw_set_color(make_color_rgb(25, 25, 25));

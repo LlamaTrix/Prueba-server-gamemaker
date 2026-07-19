@@ -340,6 +340,12 @@ function net_read_payload(_state, _payload) {
             var _hit_target = noone;
             if (_hit_uid == _state.uid && instance_number(obj_player) > 0) {
                 _hit_target = instance_find(obj_player, 0);
+                // A quien recibe el golpe se le sacude la cámara.
+                with (obj_camera) {
+                    shake_time = 12;
+                    shake_time_max = 12;
+                    shake_mag = (_hit_kind == ATTACK_NORMAL) ? 7 : 14;
+                }
             } else {
                 _hit_target = net_find_remote(_hit_uid);
             }

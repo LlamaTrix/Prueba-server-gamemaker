@@ -219,8 +219,8 @@ function handleMessage(socket, payload) {
       return;
     }
     c.name = name;
-    c.x = 100 + Math.floor(Math.random() * 3801);
-    c.y = 100 + Math.floor(Math.random() * 3801);
+    c.x = 100 + Math.floor(Math.random() * 1801);
+    c.y = 100 + Math.floor(Math.random() * 1801);
     c.facing = 1;
     c.lastMovementAt = Date.now();
 
@@ -249,8 +249,8 @@ function handleMessage(socket, payload) {
     c.facing = payload.readInt8(7) < 0 ? -1 : 1;
     const length = Math.hypot(dx, dy);
     if (length > 0) {
-      c.x = Math.max(20, Math.min(3980, c.x + dx / length * 3));
-      c.y = Math.max(48, Math.min(3990, c.y + dy / length * 3));
+      c.x = Math.max(20, Math.min(1980, c.x + dx / length * 3));
+      c.y = Math.max(48, Math.min(1990, c.y + dy / length * 3));
     }
     c.lastMovementAt = Date.now();
     if (c.afk) {
@@ -287,9 +287,9 @@ function handleMessage(socket, payload) {
       applyDamage(target, damage);
       // El servidor mueve también la posición autoritativa para que el empuje
       // sea visible de forma consistente tanto en escritorio como en HTML5.
-      if (kind === 2) target.x = Math.max(20, Math.min(3980, target.x + c.facing * (30 + charge)));
-      if (kind === 3) target.y = Math.max(48, Math.min(3990, target.y - (30 + charge)));
-      if (kind === 4) target.y = Math.max(48, Math.min(3990, target.y + (30 + charge)));
+      if (kind === 2) target.x = Math.max(20, Math.min(1980, target.x + c.facing * (30 + charge)));
+      if (kind === 3) target.y = Math.max(48, Math.min(1990, target.y - (30 + charge)));
+      if (kind === 4) target.y = Math.max(48, Math.min(1990, target.y + (30 + charge)));
       broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge).u8(target.health).u16(target.x).u16(target.y));
       if (kind !== 1) broadcastPosition(target);
       console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
@@ -335,7 +335,7 @@ function handleMessage(socket, payload) {
     if (c.ki < 5 || now - c.lastDashAt < DASH_COOLDOWN_MS) return;
     c.lastDashAt = now;
     c.ki -= 5;
-    c.x = Math.max(20, Math.min(3980, c.x + direction * DASH_DISTANCE));
+    c.x = Math.max(20, Math.min(1980, c.x + direction * DASH_DISTANCE));
     c.lastMovementAt = now;
     broadcastStats(c, socket);
     broadcastExcept(new Writer().u8(MSG_DASH_STATE).u16(c.uid).u16(c.x).u16(c.y).s8(direction), socket);
