@@ -12,7 +12,7 @@ draw_circle(x, y, radius, false);
 
 // anillo de choque
 draw_set_alpha(0.95 * _t);
-draw_circle_color(x, y, radius, x, y, _cel, _cel, true);
+draw_circle_color(x, y, radius, _cel, _cel, true);
 
 // núcleo brillante
 draw_set_color(_white);
