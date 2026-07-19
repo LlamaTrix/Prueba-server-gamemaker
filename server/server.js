@@ -16,9 +16,11 @@
 const net = require('net');
 const http = require('http');
 const readline = require('readline');
+const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6510;
 const HTTP_PORT = process.env.HTTP_PORT ? Number(process.env.HTTP_PORT) : 6511;
+const WS_PORT = process.env.WS_PORT ? Number(process.env.WS_PORT) : 6512;
 const MAX_NAME_LEN = 24;
 const MAX_CHAT_LEN = 200;
 const SERVER_NAME = '-servidor-';
@@ -309,11 +311,12 @@ function countPlayers() {
   return [...clients.values()].filter(c => c.name !== null).length;
 }
 
-// ---------- servidor TCP ----------
+// ---------- manejo común de conexiones (TCP y WebSocket) ----------
+// 'conn' abstrae el transporte: expone write(buf), end(), destroyed y remoteAddress.
+// La versión de escritorio llega por TCP; el navegador (HTML5) por WebSocket.
 
-const server = net.createServer(socket => {
-  socket.setNoDelay(true);
-  clients.set(socket, {
+function newClientRecord() {
+  return {
     uid: nextUid++,
     name: null,
     inbuf: Buffer.alloc(0),
@@ -330,44 +333,84 @@ const server = net.createServer(socket => {
     lastKiFireAt: 0,
     lastKiHitAt: 0,
     lastDashAt: 0
-  });
-  console.log(`[~] conexión desde ${socket.remoteAddress}`);
-
-  socket.on('data', chunk => {
-    const c = clients.get(socket);
-    if (!c) return;
-    if (c.name === null) {
-      console.log(`[debug] primeros bytes de ${socket.remoteAddress}: ${chunk.subarray(0, 24).toString('hex')}`);
-    }
-    c.inbuf = Buffer.concat([c.inbuf, chunk]);
-    if (c.inbuf.length > 64 * 1024) { socket.destroy(); return; } // anti-flood
-
-    while (c.inbuf.length >= 2) {
-      const len = c.inbuf.readUInt16LE(0);
-      if (c.inbuf.length < 2 + len) break;
-      const payload = c.inbuf.subarray(2, 2 + len);
-      c.inbuf = c.inbuf.subarray(2 + len);
-      handleMessage(socket, payload);
-    }
-  });
-
-  const bye = () => {
-    const c = clients.get(socket);
-    if (!c) return;
-    clients.delete(socket);
-    if (c.name !== null) {
-      console.log(`[-] ${c.name} se desconectó — ${countPlayers()} en línea`);
-      broadcast(playerListWriter());
-      broadcast(worldWriter());
-      systemChat(`${c.name} salió del lobby`);
-    }
   };
-  socket.on('close', bye);
-  socket.on('error', bye);
+}
+
+// Acumula bytes recibidos (idéntico para TCP y WS) y procesa tramas completas.
+function handleData(conn, chunk) {
+  const c = clients.get(conn);
+  if (!c) return;
+  if (c.name === null) {
+    console.log(`[debug] primeros bytes de ${conn.remoteAddress}: ${chunk.subarray(0, 24).toString('hex')}`);
+  }
+  c.inbuf = Buffer.concat([c.inbuf, chunk]);
+  if (c.inbuf.length > 64 * 1024) { conn.end(); return; } // anti-flood
+
+  while (c.inbuf.length >= 2) {
+    const len = c.inbuf.readUInt16LE(0);
+    if (c.inbuf.length < 2 + len) break;
+    const payload = c.inbuf.subarray(2, 2 + len);
+    c.inbuf = c.inbuf.subarray(2 + len);
+    handleMessage(conn, payload);
+  }
+}
+
+function disconnect(conn) {
+  const c = clients.get(conn);
+  if (!c) return;
+  clients.delete(conn);
+  if (c.name !== null) {
+    console.log(`[-] ${c.name} se desconectó — ${countPlayers()} en línea`);
+    broadcast(playerListWriter());
+    broadcast(worldWriter());
+    systemChat(`${c.name} salió del lobby`);
+  }
+}
+
+// ---------- servidor TCP (versión de escritorio) ----------
+
+const server = net.createServer(socket => {
+  socket.setNoDelay(true);
+  clients.set(socket, newClientRecord());
+  console.log(`[~] conexión TCP desde ${socket.remoteAddress}`);
+  socket.on('data', chunk => handleData(socket, chunk));
+  socket.on('close', () => disconnect(socket));
+  socket.on('error', () => disconnect(socket));
 });
 
 server.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
+  console.log(`Servidor TCP escuchando en el puerto ${PORT}`);
+});
+
+// ---------- servidor WebSocket (versión navegador / HTML5) ----------
+// GameMaker HTML5 usa network_socket_wss: cada mensaje binario contiene los
+// mismos bytes que enviaría por TCP, así que se reutiliza toda la lógica.
+// nginx expone esto como wss://jugar.minecruz.com/ws/ (proxy a 127.0.0.1:WS_PORT).
+
+const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT });
+
+wss.on('connection', (ws, req) => {
+  const conn = {
+    isWs: true,
+    remoteAddress: (req.socket && req.socket.remoteAddress) || 'ws',
+    get destroyed() { return ws.readyState !== ws.OPEN; },
+    write(buf) { if (ws.readyState === ws.OPEN) ws.send(buf); },
+    end() { try { ws.close(); } catch (e) {} },
+    destroy() { try { ws.terminate(); } catch (e) {} }
+  };
+  clients.set(conn, newClientRecord());
+  console.log(`[~] conexión WS desde ${conn.remoteAddress}`);
+
+  ws.on('message', data => {
+    const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    handleData(conn, chunk);
+  });
+  ws.on('close', () => disconnect(conn));
+  ws.on('error', () => disconnect(conn));
+});
+
+wss.on('listening', () => {
+  console.log(`Servidor WebSocket escuchando en 127.0.0.1:${WS_PORT}`);
 });
 
 // El servidor es la autoridad del AFK: 60 s para marcar y 20 s más para expulsar.

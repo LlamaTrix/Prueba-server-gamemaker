@@ -1,8 +1,13 @@
 /// Cliente de red para el servidor Node.js de este repositorio.
 /// Protocolo TCP raw: [u16 LE largo][u8 mensaje][datos...].
 
+// Escritorio (.exe): TCP raw directo al servidor Node.
 #macro SERVER_HOST "prueba.minecruz.com"
 #macro SERVER_PORT 6510
+// Navegador (HTML5): WebSocket seguro a través de nginx/Cloudflare.
+// El navegador no permite TCP raw; GameMaker usa network_socket_wss.
+#macro SERVER_WS_URL  "wss://jugar.minecruz.com/ws/"
+#macro SERVER_WS_PORT 443
 
 #macro MSG_JOIN        1
 #macro MSG_WELCOME     2
@@ -55,7 +60,14 @@ function net_connect(_state) {
     _state.error = "";
     _state.status = "connecting";
     _state.connect_started_at = current_time;
-    _state.socket = network_create_socket(network_socket_tcp);
+
+    // En el navegador (HTML5) no existen sockets TCP: se usa WebSocket seguro.
+    var _is_browser = (os_browser != browser_not_a_browser);
+    if (_is_browser) {
+        _state.socket = network_create_socket(network_socket_wss);
+    } else {
+        _state.socket = network_create_socket(network_socket_tcp);
+    }
 
     if (_state.socket < 0) {
         _state.status = "error";
@@ -63,15 +75,17 @@ function net_connect(_state) {
         return false;
     }
 
-    var _result = network_connect_raw_async(_state.socket, SERVER_HOST, SERVER_PORT);
+    var _host = _is_browser ? SERVER_WS_URL : SERVER_HOST;
+    var _port = _is_browser ? SERVER_WS_PORT : SERVER_PORT;
+    var _result = network_connect_raw_async(_state.socket, _host, _port);
     if (_result < 0) {
         net_close(_state);
         _state.status = "error";
-        _state.error = "No se pudo iniciar la conexión a " + SERVER_HOST + ":" + string(SERVER_PORT);
+        _state.error = "No se pudo iniciar la conexión a " + string(_host) + ":" + string(_port);
         return false;
     }
 
-    show_debug_message("[red] conectando socket " + string(_state.socket) + " a " + SERVER_HOST + ":" + string(SERVER_PORT));
+    show_debug_message("[red] conectando socket " + string(_state.socket) + " a " + string(_host) + ":" + string(_port));
     return true;
 }
 
