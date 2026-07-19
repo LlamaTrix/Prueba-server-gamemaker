@@ -1,4 +1,10 @@
-if (stun_frames <= 0) {
+var _chat_blocked = false;
+if (instance_number(obj_client) > 0) {
+    var _client_instance = instance_find(obj_client, 0);
+    _chat_blocked = _client_instance.chat_open;
+}
+
+if (!_chat_blocked && stun_frames <= 0) {
     var _busy = attack_kind != ATTACK_NONE || charging || turn_frames > 0;
 
     if (!_busy) {
@@ -7,7 +13,6 @@ if (stun_frames <= 0) {
         if (hsp != 0 || vsp != 0) {
             var _len = point_distance(0, 0, hsp, vsp);
             hsp = hsp / _len * move_speed; vsp = vsp / _len * move_speed;
-            if (hsp != 0) facing = sign(hsp);
 
             with (obj_client) {
                 if (net.session_ready && current_time - net.last_activity_sent >= 1000) {
@@ -27,7 +32,11 @@ if (stun_frames <= 0) {
         } else if (keyboard_check_pressed(ord("X"))) {
             if (keyboard_check(vk_up)) fighter_begin_charge(self, ATTACK_STRONG_HIGH);
             else if (keyboard_check(vk_down)) fighter_begin_charge(self, ATTACK_STRONG_LOW);
-            else fighter_begin_charge(self, ATTACK_STRONG);
+            else {
+                // El fuerte frontal sale inmediatamente y no admite carga.
+                fighter_begin_strong(self, ATTACK_STRONG);
+                attack_charge_level = 0;
+            }
         }
     } else if (charging) {
         hsp = 0; vsp = 0;
@@ -47,9 +56,10 @@ if (stun_frames <= 0) {
         hsp = 0; vsp = 0;
 
         if (!combo_hit) {
-            var _x1 = (facing == 1) ? x + 12 : x - 72;
-            var _x2 = (facing == 1) ? x + 72 : x - 12;
-            var _target = collision_rectangle(_x1, y - 58, _x2, y + 4, obj_fighter, false, true);
+            var _hit_x = fighter_hit_x(self);
+            var _hit_y = fighter_hit_y(self);
+            var _hit_radius = fighter_hit_radius(self);
+            var _target = collision_circle(_hit_x, _hit_y, _hit_radius, obj_fighter, false, true);
             if (_target != noone) fighter_receive_hit(_target, attack_kind, facing, attack_charge_level);
             combo_hit = true;
         }
@@ -69,3 +79,17 @@ if (stun_frames <= 0) {
 }
 
 event_inherited();
+
+// Sincronizar posición y dirección aproximadamente 12 veces por segundo.
+with (obj_client) {
+    if (net.session_ready && current_time - net.last_position_sent >= 80
+        && (abs(other.x - net.last_sent_x) >= 0.5
+            || abs(other.y - net.last_sent_y) >= 0.5
+            || other.facing != net.last_sent_facing)) {
+        net_send_position(net, other.x, other.y, other.facing);
+        net.last_position_sent = current_time;
+        net.last_sent_x = other.x;
+        net.last_sent_y = other.y;
+        net.last_sent_facing = other.facing;
+    }
+}

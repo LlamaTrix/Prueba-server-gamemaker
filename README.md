@@ -27,12 +27,15 @@ strings = UTF-8 terminados en NUL (formato buffer_string de GameMaker)
 | ID | Mensaje | Dirección | Datos |
 |---|---|---|---|
 | 1 | `MSG_JOIN` | cliente → servidor | string nombre |
-| 2 | `MSG_WELCOME` | servidor → cliente | u16 uid |
+| 2 | `MSG_WELCOME` | servidor → cliente | u16 uid + u16 x + u16 y |
 | 3 | `MSG_PLAYER_LIST` | servidor → todos | u16 cantidad + N strings |
 | 4 | `MSG_CHAT` | cliente → servidor: string texto · servidor → todos: string nombre, string texto |
 | 5 | `MSG_ACTIVITY` | cliente → servidor | sin datos; movimiento del personaje |
 | 6 | `MSG_KICK` | servidor → cliente | string motivo |
 | 7 | `MSG_LEAVE` | cliente → servidor | sin datos; cierre voluntario |
+| 8 | `MSG_WORLD` | servidor → clientes | lista de UID, nombre, posición y dirección |
+| 9 | `MSG_POS` | ambos | posición y dirección del jugador |
+| 10 | `MSG_BUBBLE` | servidor → clientes | UID + texto para la burbuja de chat |
 
 El servidor marca al jugador como `[AFK]` tras 60 segundos sin movimiento. Si
 no vuelve a moverse durante los 20 segundos siguientes, lo expulsa y cierra su

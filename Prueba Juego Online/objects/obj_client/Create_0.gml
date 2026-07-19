@@ -1,5 +1,6 @@
 username = "";
 chat_input = "";
+chat_open = false;
 name_prompt = -1;
 
 // La interfaz usa una superficie lógica fija de 400 x 400.
@@ -21,7 +22,11 @@ net = {
     receive_buffer: buffer_create(2048, buffer_grow, 1),
     receive_size: 0,
     kicked: false,
-    last_activity_sent: 0
+    last_activity_sent: 0,
+    last_position_sent: 0,
+    last_sent_x: -1,
+    last_sent_y: -1,
+    last_sent_facing: 0
 };
 
 show_debug_message("[cliente] solicitando nombre...");

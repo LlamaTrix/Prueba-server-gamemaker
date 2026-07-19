@@ -30,6 +30,9 @@ const MSG_CHAT = 4;
 const MSG_ACTIVITY = 5;
 const MSG_KICK = 6;
 const MSG_LEAVE = 7;
+const MSG_WORLD = 8;   // servidor -> clientes: snapshot de todos (uid, nombre, x, y, facing)
+const MSG_POS = 9;     // posición y dirección de un jugador
+const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -43,6 +46,7 @@ class Writer {
   constructor() { this.parts = []; }
   u8(v)  { this.parts.push(Buffer.from([v & 0xff])); return this; }
   u16(v) { const b = Buffer.alloc(2); b.writeUInt16LE(v); this.parts.push(b); return this; }
+  s8(v)  { const b = Buffer.alloc(1); b.writeInt8(v); this.parts.push(b); return this; }
   str(s) { this.parts.push(Buffer.from(String(s), 'utf8'), Buffer.from([0])); return this; }
   frame() {
     const payload = Buffer.concat(this.parts);
@@ -78,6 +82,17 @@ function playerListWriter() {
   const w = new Writer().u8(MSG_PLAYER_LIST).u16(names.length);
   for (const n of names) w.str(n);
   return w;
+}
+
+function worldWriter() {
+  const players = [...clients.values()].filter(c => c.name !== null);
+  const w = new Writer().u8(MSG_WORLD).u16(players.length);
+  for (const c of players) w.u16(c.uid).str(c.name).u16(c.x).u16(c.y).s8(c.facing);
+  return w;
+}
+
+function broadcastPosition(c) {
+  broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
 }
 
 function systemChat(text) {
@@ -121,10 +136,14 @@ function handleMessage(socket, payload) {
     let name = r.value.trim().slice(0, MAX_NAME_LEN);
     if (name === '') name = 'Jugador' + c.uid;
     c.name = name;
+    c.x = 100 + Math.floor(Math.random() * 3801);
+    c.y = 100 + Math.floor(Math.random() * 3801);
+    c.facing = 1;
     c.lastMovementAt = Date.now();
 
-    send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid));
+    send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid).u16(c.x).u16(c.y));
     broadcast(playerListWriter());
+    broadcast(worldWriter());
     systemChat(`${name} entró al lobby`);
     console.log(`[+] ${name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
 
@@ -134,7 +153,20 @@ function handleMessage(socket, payload) {
     const text = r.value.trim().slice(0, MAX_CHAT_LEN);
     if (text === '') return;
     broadcast(new Writer().u8(MSG_CHAT).str(c.name).str(text));
+    broadcast(new Writer().u8(MSG_BUBBLE).u16(c.uid).str(text));
     console.log(`[chat] ${c.name}: ${text}`);
+
+  } else if (msg === MSG_POS && c.name !== null && payload.length >= 6) {
+    c.x = Math.max(20, Math.min(3980, payload.readUInt16LE(1)));
+    c.y = Math.max(48, Math.min(3990, payload.readUInt16LE(3)));
+    c.facing = payload.readInt8(5) < 0 ? -1 : 1;
+    c.lastMovementAt = Date.now();
+    if (c.afk) {
+      c.afk = false;
+      broadcast(playerListWriter());
+      systemChat(`${c.name} ya no está AFK`);
+    }
+    broadcastPosition(c);
 
   } else if (msg === MSG_ACTIVITY && c.name !== null) {
     c.lastMovementAt = Date.now();
@@ -164,7 +196,10 @@ const server = net.createServer(socket => {
     inbuf: Buffer.alloc(0),
     lastMovementAt: Date.now(),
     afk: false,
-    kicking: false
+    kicking: false,
+    x: 2000,
+    y: 2000,
+    facing: 1
   });
   console.log(`[~] conexión desde ${socket.remoteAddress}`);
 
@@ -193,6 +228,7 @@ const server = net.createServer(socket => {
     if (c.name !== null) {
       console.log(`[-] ${c.name} se desconectó — ${countPlayers()} en línea`);
       broadcast(playerListWriter());
+      broadcast(worldWriter());
       systemChat(`${c.name} salió del lobby`);
     }
   };

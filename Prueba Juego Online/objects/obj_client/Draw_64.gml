@@ -23,13 +23,27 @@ draw_text(10, 10, username + "  |  jugadores: " + string(array_length(net.player
 
 if (instance_number(obj_player) > 0) {
     var _player = instance_find(obj_player, 0);
+    draw_set_halign(fa_right);
+    draw_set_color(c_white);
+    draw_text(390, 10, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
+    draw_set_halign(fa_left);
     if (_player.charging) {
         var _charge_level = floor(_player.charge_frames / _player.strong_charge_step);
         draw_set_color(c_yellow);
-        draw_text(10, 40, "Cargando fuerte: " + string(_player.charge_frames) + "/60  (empuje +" + string(_charge_level) + ")");
+        draw_text(10, 40, "Carga vertical: " + string(_player.charge_frames) + "/60  (empuje +" + string(_charge_level) + ")");
     }
 }
 
 draw_set_color(c_white);
-draw_text(10, 356, "Flechas: mover   A: girar   Z: combo");
-draw_text(10, 374, "X fuerte   Arr+X alto   Abj+X bajo");
+if (chat_open) {
+    draw_set_color(make_color_rgb(25, 25, 25));
+    draw_rectangle(5, 352, 395, 395, false);
+    draw_set_color(c_white);
+    draw_text(10, 356, "CHAT (Enter enviar / Esc cancelar)");
+    var _shown = chat_input;
+    if (string_length(_shown) > 43) _shown = string_copy(_shown, string_length(_shown) - 42, 43);
+    draw_text(10, 376, "> " + _shown + "_");
+} else {
+    draw_text(10, 356, "Flechas mover  A girar  Z combo  T chat");
+    draw_text(10, 374, "X fuerte   Arr+X alto   Abj+X bajo");
+}

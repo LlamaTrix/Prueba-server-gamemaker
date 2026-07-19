@@ -11,6 +11,9 @@
 #macro MSG_ACTIVITY    5
 #macro MSG_KICK        6
 #macro MSG_LEAVE       7
+#macro MSG_WORLD       8
+#macro MSG_POS         9
+#macro MSG_BUBBLE      10
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -30,6 +33,7 @@ function net_close(_state) {
     }
     _state.tcp_connected = false;
     _state.session_ready = false;
+    with (obj_remote) instance_destroy();
     net_receive_reset(_state);
 }
 
@@ -97,6 +101,41 @@ function net_send_empty(_state, _message) {
     return _ok;
 }
 
+function net_send_position(_state, _x, _y, _facing) {
+    var _payload = buffer_create(6, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_POS);
+    buffer_write(_payload, buffer_u16, clamp(round(_x), 0, 65535));
+    buffer_write(_payload, buffer_u16, clamp(round(_y), 0, 65535));
+    buffer_write(_payload, buffer_s8, _facing);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_find_remote(_uid) {
+    for (var i = 0; i < instance_number(obj_remote); i++) {
+        var _remote = instance_find(obj_remote, i);
+        if (_remote.remote_uid == _uid) return _remote;
+    }
+    return noone;
+}
+
+function net_set_bubble(_uid, _text) {
+    if (instance_number(obj_player) > 0) {
+        var _local = instance_find(obj_player, 0);
+        if (_local.net_uid == _uid) {
+            _local.bubble_text = _text;
+            _local.bubble_timer = 240;
+            return;
+        }
+    }
+    var _remote = net_find_remote(_uid);
+    if (_remote != noone) {
+        _remote.bubble_text = _text;
+        _remote.bubble_timer = 240;
+    }
+}
+
 /// Retira una trama completa del inicio del acumulador.
 function net_consume_frame(_state, _frame_size) {
     var _remaining = _state.receive_size - _frame_size;
@@ -117,10 +156,68 @@ function net_read_payload(_state, _payload) {
     switch (_message) {
         case MSG_WELCOME:
             _state.uid = buffer_read(_payload, buffer_u16);
+            // Compatibilidad: el servidor antiguo enviaba únicamente el UID (3 bytes).
+            // El protocolo nuevo añade X/Y y tiene 7 bytes en total.
+            var _has_spawn = buffer_get_size(_payload) >= 7;
+            var _spawn_x = -1;
+            var _spawn_y = -1;
+            if (_has_spawn) {
+                _spawn_x = buffer_read(_payload, buffer_u16);
+                _spawn_y = buffer_read(_payload, buffer_u16);
+            }
+            if (instance_number(obj_player) > 0) {
+                var _player = instance_find(obj_player, 0);
+                _player.net_uid = _state.uid;
+                if (_has_spawn) {
+                    _player.x = _spawn_x;
+                    _player.y = _spawn_y;
+                }
+            }
             _state.session_ready = true;
             _state.status = "online";
             _state.error = "";
             show_debug_message("[red] sesión aceptada; uid=" + string(_state.uid));
+            break;
+
+        case MSG_WORLD:
+            with (obj_remote) instance_destroy();
+            var _world_count = buffer_read(_payload, buffer_u16);
+            for (var _wi = 0; _wi < _world_count; _wi++) {
+                var _uid = buffer_read(_payload, buffer_u16);
+                var _name = buffer_read(_payload, buffer_string);
+                var _x = buffer_read(_payload, buffer_u16);
+                var _y = buffer_read(_payload, buffer_u16);
+                var _facing = buffer_read(_payload, buffer_s8);
+                if (_uid != _state.uid) {
+                    var _remote = instance_create_layer(_x, _y, "Instances", obj_remote);
+                    _remote.remote_uid = _uid;
+                    _remote.remote_name = _name;
+                    _remote.target_x = _x;
+                    _remote.target_y = _y;
+                    _remote.facing = _facing;
+                }
+            }
+            break;
+
+        case MSG_POS:
+            var _pos_uid = buffer_read(_payload, buffer_u16);
+            var _pos_x = buffer_read(_payload, buffer_u16);
+            var _pos_y = buffer_read(_payload, buffer_u16);
+            var _pos_facing = buffer_read(_payload, buffer_s8);
+            if (_pos_uid != _state.uid) {
+                var _pos_remote = net_find_remote(_pos_uid);
+                if (_pos_remote != noone) {
+                    _pos_remote.target_x = _pos_x;
+                    _pos_remote.target_y = _pos_y;
+                    _pos_remote.facing = _pos_facing;
+                }
+            }
+            break;
+
+        case MSG_BUBBLE:
+            var _bubble_uid = buffer_read(_payload, buffer_u16);
+            var _bubble_text = buffer_read(_payload, buffer_string);
+            net_set_bubble(_bubble_uid, _bubble_text);
             break;
 
         case MSG_PLAYER_LIST:

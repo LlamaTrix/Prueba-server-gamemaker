@@ -4,6 +4,22 @@
 #macro ATTACK_STRONG_HIGH 3
 #macro ATTACK_STRONG_LOW  4
 
+/// Posición y tamaño únicos para dibujo y detección de las hitboxes.
+function fighter_hit_x(_f) {
+    var _reach = (_f.attack_kind == ATTACK_STRONG_HIGH || _f.attack_kind == ATTACK_STRONG_LOW) ? 32 : 42;
+    return _f.x + _f.facing * _reach;
+}
+
+function fighter_hit_y(_f) {
+    if (_f.attack_kind == ATTACK_STRONG_HIGH) return _f.y - 62;
+    if (_f.attack_kind == ATTACK_STRONG_LOW) return _f.y - 18;
+    return _f.y - 40;
+}
+
+function fighter_hit_radius(_f) {
+    return (_f.attack_kind == ATTACK_NORMAL) ? 15 : 19;
+}
+
 function fighter_init(_f) {
     // Duraciones editables, expresadas en frames del juego.
     _f.combo_duration_1 = 20;
@@ -14,7 +30,7 @@ function fighter_init(_f) {
     _f.strong_charge_max = 60;
     _f.strong_charge_step = 20;
     _f.strong_base_push = 6;
-    _f.strong_charge_push_bonus = 1;
+    _f.strong_charge_push_bonus = 2;
 
     _f.move_speed = 2.5;
     _f.hsp = 0; _f.vsp = 0; _f.facing = 1;
@@ -25,6 +41,7 @@ function fighter_init(_f) {
     _f.attack_charge_level = 0;
     _f.combo_stage = 0; _f.combo_timer = 0; _f.combo_queued = false; _f.combo_hit = false;
     _f.turn_frames = 0; _f.pending_facing = 1;
+    _f.bubble_text = ""; _f.bubble_timer = 0;
     _f.image_speed = 0; _f.image_xscale = 2; _f.image_yscale = 2;
 }
 
@@ -48,14 +65,14 @@ function fighter_receive_hit(_target, _kind, _direction, _charge_level) {
             _target.knockback_x = _direction * (_target.strong_base_push + _charge_level);
             break;
         case ATTACK_STRONG_HIGH:
-            _target.hurt_sprite = spr_goku_downward_hurt;
-            _target.stun_frames = 18;
-            _target.knockback_y = _target.strong_base_push + _charge_level;
-            break;
-        case ATTACK_STRONG_LOW:
             _target.hurt_sprite = spr_goku_sideward_hurt;
             _target.stun_frames = 18;
             _target.knockback_y = -(_target.strong_base_push + _charge_level);
+            break;
+        case ATTACK_STRONG_LOW:
+            _target.hurt_sprite = spr_goku_downward_hurt;
+            _target.stun_frames = 18;
+            _target.knockback_y = _target.strong_base_push + _charge_level;
             break;
     }
     _target.sprite_index = _target.hurt_sprite;
