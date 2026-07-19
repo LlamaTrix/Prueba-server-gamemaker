@@ -1,47 +1,35 @@
-if (error_msg != "") {
+draw_set_halign(fa_left);
+draw_set_valign(fa_top);
+
+if (net.status == "error") {
     draw_set_color(c_red);
-    draw_text(20, 20, error_msg);
-    exit;
-}
-if (estado == "esperando_nombre") {
-    draw_set_color(c_yellow);
-    draw_text(20, 20, "Esperando que escribas tu nombre...");
-    exit;
-}
-if (!connected) {
-    draw_set_color(c_yellow);
-    draw_text(20, 20, "Conectando a " + SERVER_IP + ":" + string(SERVER_PORT) + "...");
-    exit;
-}
-if (my_uid < 0) {
-    draw_set_color(c_yellow);
-    draw_text(20, 20, "Conectado. Esperando respuesta del servidor...");
+    draw_text_ext(10, 10, net.error, 18, 380);
+    draw_set_color(c_white);
+    draw_text(10, 64, "R: reconectar");
     exit;
 }
 
-// ---- cabecera ----
+if (net.status != "online") {
+    draw_set_color(c_yellow);
+    draw_text(10, 10, "Conectando al servidor...");
+    exit;
+}
+
+// HUD compacto: deja visible el mundo y los luchadores.
+draw_set_color(make_color_rgb(15, 20, 28));
+draw_rectangle(5, 5, 395, 34, false);
 draw_set_color(c_aqua);
-draw_text(20, 20, "Tu nombre: " + username + "   (UID: " + string(my_uid) + ")");
+draw_text(10, 10, username + "  |  jugadores: " + string(array_length(net.players)));
 
-// ---- lista de jugadores (izquierda) ----
-draw_set_color(c_white);
-draw_text(20, 60, "Personas en la sala (" + string(array_length(players)) + "):");
-for (var i = 0; i < array_length(players); i++) {
-    draw_text(40, 90 + i * 25, "- " + players[i]);
+if (instance_number(obj_player) > 0) {
+    var _player = instance_find(obj_player, 0);
+    if (_player.charging) {
+        var _charge_level = floor(_player.charge_frames / _player.strong_charge_step);
+        draw_set_color(c_yellow);
+        draw_text(10, 40, "Cargando fuerte: " + string(_player.charge_frames) + "/60  (empuje +" + string(_charge_level) + ")");
+    }
 }
 
-// ---- chat (derecha) ----
-var cx = 420;
-draw_set_color(c_yellow);
-draw_text(cx, 60, "CHAT  (escribe y presiona ENTER)");
 draw_set_color(c_white);
-for (var i = 0; i < array_length(chat_log); i++) {
-    draw_text(cx, 90 + i * 25, chat_log[i]);
-}
-
-// caja de entrada
-var iy = display_get_gui_height() - 50;
-draw_set_color(c_gray);
-draw_rectangle(cx - 6, iy - 6, cx + 700, iy + 26, true);
-draw_set_color(c_lime);
-draw_text(cx, iy, "> " + chat_input + "_");
+draw_text(10, 356, "Flechas: mover   A: girar   Z: combo");
+draw_text(10, 374, "X fuerte   Arr+X alto   Abj+X bajo");

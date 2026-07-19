@@ -15,19 +15,27 @@
 
 const net = require('net');
 const http = require('http');
+const readline = require('readline');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6510;
 const HTTP_PORT = process.env.HTTP_PORT ? Number(process.env.HTTP_PORT) : 6511;
 const MAX_NAME_LEN = 24;
 const MAX_CHAT_LEN = 200;
+const SERVER_NAME = '-servidor-';
 
 const MSG_JOIN = 1;
 const MSG_WELCOME = 2;
 const MSG_PLAYER_LIST = 3;
 const MSG_CHAT = 4;
+const MSG_ACTIVITY = 5;
+const MSG_KICK = 6;
+const MSG_LEAVE = 7;
+
+const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
+const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
 
 let nextUid = 1;
-const clients = new Map(); // socket -> { uid, name, inbuf }
+const clients = new Map(); // socket -> { uid, name, inbuf, lastMovementAt, afk }
 
 // ---------- helpers de escritura ----------
 
@@ -64,14 +72,42 @@ function readString(buf, offset) {
 // ---------- lógica del juego ----------
 
 function playerListWriter() {
-  const names = [...clients.values()].filter(c => c.name !== null).map(c => c.name);
+  const names = [...clients.values()]
+    .filter(c => c.name !== null)
+    .map(c => c.name + (c.afk ? ' [AFK]' : ''));
   const w = new Writer().u8(MSG_PLAYER_LIST).u16(names.length);
   for (const n of names) w.str(n);
   return w;
 }
 
 function systemChat(text) {
-  broadcast(new Writer().u8(MSG_CHAT).str('[Servidor]').str(text));
+  broadcast(new Writer().u8(MSG_CHAT).str(SERVER_NAME).str(text));
+}
+
+// Busca un cliente ya identificado por su uid (número) o por su nombre exacto.
+function findClient(query) {
+  const q = String(query).trim();
+  const asUid = Number(q);
+  for (const [socket, c] of clients) {
+    if (c.name === null) continue;
+    if (!Number.isNaN(asUid) && q !== '' && c.uid === asUid) return { socket, c };
+    if (c.name.toLowerCase() === q.toLowerCase()) return { socket, c };
+  }
+  return null;
+}
+
+// Expulsa a un jugador con un motivo. Devuelve true si lo encontró.
+function kickPlayer(query, reason) {
+  const found = findClient(query);
+  if (!found) return false;
+  const { socket, c } = found;
+  c.kicking = true;
+  const motivo = reason && reason.trim() !== '' ? reason.trim() : 'Expulsado por el servidor';
+  send(socket, new Writer().u8(MSG_KICK).str(motivo));
+  systemChat(`${c.name} fue expulsado (${motivo})`);
+  console.log(`[kick] ${c.name} (uid ${c.uid}) — ${motivo}`);
+  socket.end();
+  return true;
 }
 
 function handleMessage(socket, payload) {
@@ -85,6 +121,7 @@ function handleMessage(socket, payload) {
     let name = r.value.trim().slice(0, MAX_NAME_LEN);
     if (name === '') name = 'Jugador' + c.uid;
     c.name = name;
+    c.lastMovementAt = Date.now();
 
     send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid));
     broadcast(playerListWriter());
@@ -98,6 +135,18 @@ function handleMessage(socket, payload) {
     if (text === '') return;
     broadcast(new Writer().u8(MSG_CHAT).str(c.name).str(text));
     console.log(`[chat] ${c.name}: ${text}`);
+
+  } else if (msg === MSG_ACTIVITY && c.name !== null) {
+    c.lastMovementAt = Date.now();
+    if (c.afk) {
+      c.afk = false;
+      broadcast(playerListWriter());
+      systemChat(`${c.name} ya no está AFK`);
+      console.log(`[AFK] ${c.name} volvió a moverse`);
+    }
+
+  } else if (msg === MSG_LEAVE) {
+    socket.end();
   }
 }
 
@@ -109,7 +158,14 @@ function countPlayers() {
 
 const server = net.createServer(socket => {
   socket.setNoDelay(true);
-  clients.set(socket, { uid: nextUid++, name: null, inbuf: Buffer.alloc(0) });
+  clients.set(socket, {
+    uid: nextUid++,
+    name: null,
+    inbuf: Buffer.alloc(0),
+    lastMovementAt: Date.now(),
+    afk: false,
+    kicking: false
+  });
   console.log(`[~] conexión desde ${socket.remoteAddress}`);
 
   socket.on('data', chunk => {
@@ -148,6 +204,30 @@ server.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
 
+// El servidor es la autoridad del AFK: 60 s para marcar y 20 s más para expulsar.
+setInterval(() => {
+  const now = Date.now();
+  for (const [socket, c] of clients) {
+    if (c.name === null || c.kicking || socket.destroyed) continue;
+    const idleFor = now - c.lastMovementAt;
+
+    if (!c.afk && idleFor >= AFK_AFTER_MS) {
+      c.afk = true;
+      broadcast(playerListWriter());
+      systemChat(`${c.name} está AFK y será expulsado en 20 segundos`);
+      console.log(`[AFK] ${c.name} marcado como AFK`);
+    }
+
+    if (idleFor >= KICK_AFTER_MS) {
+      c.kicking = true;
+      send(socket, new Writer().u8(MSG_KICK).str('Expulsado por inactividad'));
+      systemChat(`${c.name} fue expulsado por inactividad`);
+      console.log(`[AFK] expulsando a ${c.name}`);
+      socket.end();
+    }
+  }
+}, 1000);
+
 // ---------- página de estado (detrás de nginx en prueba.minecruz.com) ----------
 
 const started = Date.now();
@@ -172,3 +252,68 @@ main{text-align:center}h1{color:#6f6}code{background:#222;padding:2px 8px;border
 }).listen(HTTP_PORT, '127.0.0.1', () => {
   console.log(`Página de estado en http://127.0.0.1:${HTTP_PORT}`);
 });
+
+// ---------- consola del operador (stdin) ----------
+// El operador escribe comandos en la terminal donde corre el servidor.
+//   say <texto>          envía un mensaje a todos como -servidor-
+//   kick <nombre|uid> [motivo]   expulsa a un jugador
+//   list                 muestra quién está conectado
+//   help                 muestra esta ayuda
+// Cualquier texto que no empiece por un comando conocido se envía como mensaje.
+
+function printHelp() {
+  console.log([
+    'Comandos disponibles:',
+    '  say <texto>                envía un mensaje a todos como ' + SERVER_NAME,
+    '  kick <nombre|uid> [motivo] expulsa a un jugador',
+    '  list                       muestra los jugadores conectados',
+    '  help                       muestra esta ayuda',
+    '  (cualquier otro texto se envía como mensaje de ' + SERVER_NAME + ')'
+  ].join('\n'));
+}
+
+function handleConsole(line) {
+  const raw = line.trim();
+  if (raw === '') return;
+
+  const space = raw.indexOf(' ');
+  const cmd = (space === -1 ? raw : raw.slice(0, space)).toLowerCase();
+  const rest = space === -1 ? '' : raw.slice(space + 1).trim();
+
+  if (cmd === 'help') {
+    printHelp();
+
+  } else if (cmd === 'list') {
+    const jugadores = [...clients.values()].filter(c => c.name !== null);
+    if (jugadores.length === 0) {
+      console.log('No hay jugadores conectados.');
+    } else {
+      console.log(`${jugadores.length} conectado(s):`);
+      for (const c of jugadores) console.log(`  [${c.uid}] ${c.name}${c.afk ? ' (AFK)' : ''}`);
+    }
+
+  } else if (cmd === 'kick') {
+    if (rest === '') { console.log('Uso: kick <nombre|uid> [motivo]'); return; }
+    const sp = rest.indexOf(' ');
+    const target = sp === -1 ? rest : rest.slice(0, sp);
+    const reason = sp === -1 ? '' : rest.slice(sp + 1);
+    if (!kickPlayer(target, reason)) console.log(`No encontré a ningún jugador "${target}".`);
+
+  } else if (cmd === 'say') {
+    if (rest === '') { console.log('Uso: say <texto>'); return; }
+    systemChat(rest.slice(0, MAX_CHAT_LEN));
+    console.log(`${SERVER_NAME}: ${rest}`);
+
+  } else {
+    // Texto libre: se manda como mensaje del servidor.
+    systemChat(raw.slice(0, MAX_CHAT_LEN));
+    console.log(`${SERVER_NAME}: ${raw}`);
+  }
+}
+
+if (process.stdin.isTTY || process.env.CONSOLE === '1') {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '' });
+  rl.on('line', line => handleConsole(line));
+  rl.on('close', () => {});
+  console.log('Consola lista. Escribe "help" para ver los comandos.');
+}
