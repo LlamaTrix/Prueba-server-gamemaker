@@ -70,7 +70,7 @@ const MSG_PROJECTILE_DESTROY = 30;
 const MSG_WORLD_STATE = 31;
 const MSG_WORLD_SNAPSHOT = 32;
 const DASH_COOLDOWN_MS = 1000;
-const DASH_DISTANCE = 30;
+const DASH_DISTANCE = 80;
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -266,21 +266,23 @@ function commitCombatEvent(attacker, target, kind, damage, charge) {
 }
 
 function findAttackTarget(attacker, kind) {
-  // Radio generoso alrededor del atacante con un leve sesgo hacia adelante.
-  // Así el golpe conecta de forma fiable al estar cerca, tolerando la latencia
-  // y sin exigir un facing perfecto (antes la hitbox estrecha fallaba pegado).
-  const cx = attacker.x + attacker.facing * 25;
+  // Hitbox ovalada (elipse) más pequeña, con leve sesgo hacia adelante.
+  // Más ancha que alta para acompañar la silueta del luchador.
+  const cx = attacker.x + attacker.facing * 22;
   const cy = attacker.y;
-  const reach = 95;
+  const rx = 46; // semieje horizontal
+  const ry = 30; // semieje vertical
   let best = null;
-  let bestDistance = Infinity;
+  let bestScore = Infinity;
 
   for (const candidate of clients.values()) {
     if (candidate.name === null || candidate.uid === attacker.uid) continue;
-    const distance = Math.hypot(candidate.x - cx, candidate.y - cy);
-    if (distance <= reach && distance < bestDistance) {
+    const nx = (candidate.x - cx) / rx;
+    const ny = (candidate.y - cy) / ry;
+    const score = nx * nx + ny * ny; // <= 1 dentro de la elipse
+    if (score <= 1 && score < bestScore) {
       best = candidate;
-      bestDistance = distance;
+      bestScore = score;
     }
   }
   return best;

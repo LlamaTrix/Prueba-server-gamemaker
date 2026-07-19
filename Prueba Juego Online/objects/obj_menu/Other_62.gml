@@ -15,7 +15,9 @@ if (_is_servers) servers_request_id = -1;
 if (_is_ticket) ticket_request_id = -1;
 
 if (_status < 0) {
-    menu_error = "No se pudo contactar la API segura";
+    menu_error = _is_auth
+        ? "No hay conexion con el servidor de cuentas. Intenta de nuevo."
+        : "No hay conexion con el servidor.";
     if (_is_auth) {
         menu_state = MENU_AUTH;
         menu_focus_field(id, 1);
@@ -38,16 +40,27 @@ try {
 }
 
 if (!_json_ok) {
-    menu_error = "La API devolvió una respuesta inválida (HTTP " + string(_http_status) + ")";
+    menu_error = "La API devolvio una respuesta invalida (HTTP " + string(_http_status) + ")";
     menu_state = _is_auth ? MENU_AUTH : MENU_SERVERS;
     if (_is_auth) menu_focus_field(id, 1);
     exit;
 }
 
 if (_http_status < 200 || _http_status >= 300) {
-    menu_error = variable_struct_exists(_data, "error")
-        ? string(_data.error)
-        : "Solicitud rechazada (HTTP " + string(_http_status) + ")";
+    if (_is_auth) {
+        // Cuenta inexistente o credenciales incorrectas: mensaje claro.
+        if (auth_mode == "register") {
+            menu_error = (_http_status == 409)
+                ? "Ese usuario ya existe. Prueba con otro nombre."
+                : "No se pudo crear la cuenta. Revisa los datos.";
+        } else {
+            menu_error = "No tienes una cuenta o los datos son incorrectos. Crea una cuenta.";
+        }
+    } else {
+        menu_error = variable_struct_exists(_data, "error")
+            ? string(_data.error)
+            : "Solicitud rechazada (HTTP " + string(_http_status) + ")";
+    }
     if (_is_ticket && _http_status == 401) {
         global.auth_token = "";
         global.account_id = "";
@@ -64,7 +77,7 @@ if (_is_auth) {
     if (!variable_struct_exists(_data, "token")
         || !variable_struct_exists(_data, "user")
         || !is_struct(_data.user)) {
-        menu_error = "Respuesta de autenticación incompleta";
+        menu_error = "Respuesta de autenticacion incompleta";
         menu_state = MENU_AUTH;
         menu_focus_field(id, 1);
         exit;
@@ -103,7 +116,7 @@ if (_is_auth) {
 
 } else if (_is_ticket) {
     if (!variable_struct_exists(_data, "ticket")) {
-        menu_error = "El servidor no entregó un ticket de acceso";
+        menu_error = "El servidor no entrego un ticket de acceso";
         menu_state = MENU_SERVERS;
         exit;
     }

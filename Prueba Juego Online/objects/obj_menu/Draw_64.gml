@@ -10,7 +10,7 @@ draw_text(200, 24, "PRUEBA JUEGO ONLINE");
 
 if (menu_state == MENU_AUTH || menu_state == MENU_AUTH_WAIT) {
     draw_set_color(c_white);
-    draw_text(200, 58, auth_mode == "register" ? "CREAR CUENTA" : "INICIAR SESIÓN");
+    draw_text(200, 58, auth_mode == "register" ? "CREAR CUENTA" : "INICIAR SESION");
 
     draw_set_halign(fa_left);
     draw_set_color(make_color_rgb(175, 190, 210));
@@ -23,7 +23,7 @@ if (menu_state == MENU_AUTH || menu_state == MENU_AUTH_WAIT) {
     draw_text(67, 117, username_input + ((auth_field == 0 && menu_state == MENU_AUTH) ? "_" : ""));
 
     draw_set_color(make_color_rgb(175, 190, 210));
-    draw_text(55, 149, "Contraseña");
+    draw_text(55, 149, "Contrasena");
     draw_set_color(make_color_rgb(25, 32, 44));
     draw_rectangle(55, 170, 345, 212, false);
     draw_set_color(auth_field == 1 ? c_aqua : make_color_rgb(70, 80, 95));
@@ -36,7 +36,7 @@ if (menu_state == MENU_AUTH || menu_state == MENU_AUTH_WAIT) {
     draw_rectangle(55, 240, 345, 280, false);
     draw_set_halign(fa_center);
     draw_set_color(c_white);
-    draw_text(200, 251, "INICIAR SESIÓN");
+    draw_text(200, 251, "INICIAR SESION");
 
     draw_set_color(make_color_rgb(35, 75, 125));
     draw_rectangle(55, 292, 345, 332, false);
@@ -86,7 +86,7 @@ if (menu_state == MENU_AUTH || menu_state == MENU_AUTH_WAIT) {
         ? "Solicitando acceso seguro..."
         : "Conectando a la partida...");
     draw_set_color(make_color_rgb(175, 190, 210));
-    draw_text(200, 205, "Tu contraseña nunca viaja al servidor de juego");
+    draw_text(200, 205, "Tu contrasena nunca viaja al servidor de juego");
 }
 
 if (menu_error != "" && (menu_state == MENU_AUTH || menu_state == MENU_AUTH_WAIT)) {

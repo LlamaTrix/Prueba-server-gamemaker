@@ -1,3 +1,13 @@
+// Sin vida: sprite KO y congelado. La reaparición la maneja obj_player.
+if (health <= 0) {
+    hsp = 0; vsp = 0;
+    stun_frames = 0; knockback_active = false;
+    sprite_index = spr_goku_ko;
+    image_index = 0; image_speed = 0;
+    image_xscale = 2 * facing;
+    exit;
+}
+
 var _was_stunned = stun_frames > 0;
 if (bubble_timer > 0) bubble_timer -= 1;
 if (dash_cooldown > 0) dash_cooldown -= 1;

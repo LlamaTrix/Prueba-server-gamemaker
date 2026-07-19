@@ -362,10 +362,8 @@ function net_read_payload(_state, _payload) {
                     _remote.facing = _facing;
                     _remote.world_seen = true;
                     net_apply_cached_stats(_state, _uid, _remote);
-                } else if (instance_number(obj_player) > 0) {
-                    var _world_local = instance_find(obj_player, 0);
-                    net_apply_cached_stats(_state, _uid, _world_local);
                 }
+                // La vida/ki del jugador local son locales: el servidor no las pisa.
             }
             with (obj_remote) {
                 if (!world_seen) instance_destroy();
@@ -414,14 +412,16 @@ function net_read_payload(_state, _payload) {
 
             if (_combat_event <= _state.last_combat_event) break;
             _state.last_combat_event = _combat_event;
-            if (!net_cache_authoritative_state(_state, _combat_target_uid,
-                _combat_health, _combat_ki, _combat_revision)) break;
 
             var _combat_target = net_find_fighter(_state, _combat_target_uid);
             if (_combat_target != noone) {
-                _combat_target.health = _combat_health;
-                _combat_target.ki = _combat_ki;
                 if (_combat_target_uid == _state.uid) {
+                    // Vida local: variable simple. Se resta el daño del golpe y el
+                    // servidor NO la pisa (ver MSG_WORLD_STATE). El KO y la
+                    // reaparición los maneja obj_player.
+                    if (!_combat_target.is_ko) {
+                        _combat_target.health = max(0, _combat_target.health - _combat_damage);
+                    }
                     _state.pending_inputs = [];
                     _state.last_sent_dx = 0;
                     _state.last_sent_dy = 0;
@@ -432,6 +432,12 @@ function net_read_payload(_state, _payload) {
                         shake_time_max = 12;
                         shake_mag = (_combat_kind == ATTACK_NORMAL) ? 7 : 14;
                     }
+                } else {
+                    // Remotos: vida autoritativa del servidor.
+                    net_cache_authoritative_state(_state, _combat_target_uid,
+                        _combat_health, _combat_ki, _combat_revision);
+                    _combat_target.health = _combat_health;
+                    _combat_target.ki = _combat_ki;
                 }
                 if (_combat_kind != ATTACK_NORMAL) {
                     fighter_spawn_explosion(_combat_target.x, _combat_target.y - 40);

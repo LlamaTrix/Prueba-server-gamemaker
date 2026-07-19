@@ -15,6 +15,37 @@ if (net.status != "online") {
     exit;
 }
 
+// --- Overlay de KO: oscurece el juego, borde rojo degradado y contador ---
+if (instance_number(obj_player) > 0) {
+    var _pl_ko = instance_find(obj_player, 0);
+    if (_pl_ko.is_ko) {
+        var _gw = display_get_gui_width();
+        var _gh = display_get_gui_height();
+        // oscurecer solo el juego (esto se dibuja antes que el HUD)
+        draw_set_color(c_black);
+        draw_set_alpha(0.55);
+        draw_rectangle(0, 0, _gw, _gh, false);
+        // borde rojo degradado semitransparente (viñeta)
+        var _bw = 55;
+        draw_set_color(c_red);
+        for (var _bi = 0; _bi < _bw; _bi++) {
+            draw_set_alpha(0.55 * (1 - _bi / _bw));
+            draw_rectangle(_bi, _bi, _gw - 1 - _bi, _gh - 1 - _bi, true);
+        }
+        draw_set_alpha(1);
+        // contador de reaparición
+        var _secs = max(1, ceil(_pl_ko.respawn_timer / 60));
+        draw_set_halign(fa_center);
+        draw_set_valign(fa_middle);
+        draw_set_color(c_white);
+        draw_text(_gw / 2, _gh / 2 - 12, "K.O.");
+        draw_text(_gw / 2, _gh / 2 + 12, "Reapareciendo en " + string(_secs) + "...");
+        draw_set_halign(fa_left);
+        draw_set_valign(fa_top);
+        draw_set_color(c_white);
+    }
+}
+
 // HUD compacto: deja visible el mundo y los luchadores.
 draw_set_color(make_color_rgb(15, 20, 28));
 draw_rectangle(5, 5, 395, 48, false);
