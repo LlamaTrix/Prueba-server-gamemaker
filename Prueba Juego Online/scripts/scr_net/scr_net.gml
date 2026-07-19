@@ -14,6 +14,8 @@
 #macro MSG_WORLD       8
 #macro MSG_POS         9
 #macro MSG_BUBBLE      10
+#macro MSG_ATTACK      11
+#macro MSG_HIT         12
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -107,6 +109,16 @@ function net_send_position(_state, _x, _y, _facing) {
     buffer_write(_payload, buffer_u16, clamp(round(_x), 0, 65535));
     buffer_write(_payload, buffer_u16, clamp(round(_y), 0, 65535));
     buffer_write(_payload, buffer_s8, _facing);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_send_attack(_state, _kind, _charge_level) {
+    var _payload = buffer_create(3, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_ATTACK);
+    buffer_write(_payload, buffer_u8, _kind);
+    buffer_write(_payload, buffer_u8, clamp(_charge_level, 0, 3));
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;
@@ -218,6 +230,22 @@ function net_read_payload(_state, _payload) {
             var _bubble_uid = buffer_read(_payload, buffer_u16);
             var _bubble_text = buffer_read(_payload, buffer_string);
             net_set_bubble(_bubble_uid, _bubble_text);
+            break;
+
+        case MSG_HIT:
+            var _hit_uid = buffer_read(_payload, buffer_u16);
+            var _hit_kind = buffer_read(_payload, buffer_u8);
+            var _hit_direction = buffer_read(_payload, buffer_s8);
+            var _hit_charge = buffer_read(_payload, buffer_u8);
+            var _hit_target = noone;
+            if (_hit_uid == _state.uid && instance_number(obj_player) > 0) {
+                _hit_target = instance_find(obj_player, 0);
+            } else {
+                _hit_target = net_find_remote(_hit_uid);
+            }
+            if (_hit_target != noone) {
+                fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge);
+            }
             break;
 
         case MSG_PLAYER_LIST:

@@ -56,11 +56,9 @@ if (!_chat_blocked && stun_frames <= 0) {
         hsp = 0; vsp = 0;
 
         if (!combo_hit) {
-            var _hit_x = fighter_hit_x(self);
-            var _hit_y = fighter_hit_y(self);
-            var _hit_radius = fighter_hit_radius(self);
-            var _target = collision_circle(_hit_x, _hit_y, _hit_radius, obj_fighter, false, true);
-            if (_target != noone) fighter_receive_hit(_target, attack_kind, facing, attack_charge_level);
+            with (obj_client) {
+                if (net.session_ready) net_send_attack(net, other.attack_kind, other.attack_charge_level);
+            }
             combo_hit = true;
         }
 

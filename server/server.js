@@ -33,6 +33,8 @@ const MSG_LEAVE = 7;
 const MSG_WORLD = 8;   // servidor -> clientes: snapshot de todos (uid, nombre, x, y, facing)
 const MSG_POS = 9;     // posición y dirección de un jugador
 const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
+const MSG_ATTACK = 11; // cliente -> servidor: u8 tipo + u8 nivel de carga
+const MSG_HIT = 12;    // servidor -> clientes: u16 objetivo + u8 tipo + s8 dirección + u8 carga
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -93,6 +95,25 @@ function worldWriter() {
 
 function broadcastPosition(c) {
   broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
+}
+
+function findAttackTarget(attacker, kind) {
+  const vertical = kind === 3 || kind === 4;
+  const hitX = attacker.x + attacker.facing * (vertical ? 32 : 42);
+  const hitY = attacker.y + (kind === 3 ? -62 : kind === 4 ? -18 : -40);
+  const hitRadius = kind === 1 ? 15 : 19;
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const candidate of clients.values()) {
+    if (candidate.name === null || candidate.uid === attacker.uid) continue;
+    const distance = Math.hypot(candidate.x - hitX, (candidate.y - 40) - hitY);
+    if (distance <= hitRadius + 26 && distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 function systemChat(text) {
@@ -168,6 +189,22 @@ function handleMessage(socket, payload) {
     }
     broadcastPosition(c);
 
+  } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 3) {
+    const now = Date.now();
+    if (now - c.lastAttackAt < 100) return;
+    c.lastAttackAt = now;
+
+    const kind = payload.readUInt8(1);
+    if (kind < 1 || kind > 4) return;
+    let charge = Math.min(3, payload.readUInt8(2));
+    if (kind === 1 || kind === 2) charge = 0;
+
+    const target = findAttackTarget(c, kind);
+    if (target) {
+      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge));
+      console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
+    }
+
   } else if (msg === MSG_ACTIVITY && c.name !== null) {
     c.lastMovementAt = Date.now();
     if (c.afk) {
@@ -199,7 +236,8 @@ const server = net.createServer(socket => {
     kicking: false,
     x: 2000,
     y: 2000,
-    facing: 1
+    facing: 1,
+    lastAttackAt: 0
   });
   console.log(`[~] conexión desde ${socket.remoteAddress}`);
 
