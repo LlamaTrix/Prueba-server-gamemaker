@@ -22,7 +22,7 @@ function fighter_hit_radius(_f) {
 
 function fighter_spawn_ki_blast(_f) {
     if (!instance_exists(_f)) return noone;
-    var _blast = instance_create_layer(_f.x + _f.facing * 38, _f.y - 50, "Instances", obj_ki_blast);
+    var _blast = instance_create_layer(_f.x + _f.facing * 52, _f.y - 50, "Instances", obj_ki_blast);
     _blast.travel_direction = _f.facing;
     _blast.image_xscale = 2 * _f.facing;
     // El proyectil recuerda quién lo lanzó: solo el jugador local reporta el

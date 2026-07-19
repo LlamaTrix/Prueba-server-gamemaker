@@ -243,7 +243,13 @@ function handleMessage(socket, payload) {
     if (target) {
       const damage = kind === 1 ? 3 : 5 + charge;
       applyDamage(target, damage);
+      // El servidor mueve también la posición autoritativa para que el empuje
+      // sea visible de forma consistente tanto en escritorio como en HTML5.
+      if (kind === 2) target.x = Math.max(20, Math.min(3980, target.x + c.facing * (8 + charge)));
+      if (kind === 3) target.y = Math.max(48, Math.min(3990, target.y - (8 + charge)));
+      if (kind === 4) target.y = Math.max(48, Math.min(3990, target.y + (8 + charge)));
       broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge));
+      if (kind !== 1) broadcastPosition(target);
       console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
     }
 
@@ -275,7 +281,7 @@ function handleMessage(socket, payload) {
     }
     if (!target || target.uid === c.uid) return;
     // Anti-trampa: el objetivo debe estar a un rango plausible del atacante.
-    if (Math.hypot(target.x - c.x, target.y - c.y) > 360) return;
+    if (Math.hypot(target.x - c.x, target.y - c.y) > 1150) return;
     c.lastKiHitAt = now;
     applyDamage(target, 3);
     broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0));
@@ -393,8 +399,8 @@ wss.on('connection', (ws, req) => {
   const conn = {
     isWs: true,
     remoteAddress: (req.socket && req.socket.remoteAddress) || 'ws',
-    get destroyed() { return ws.readyState !== ws.OPEN; },
-    write(buf) { if (ws.readyState === ws.OPEN) ws.send(buf); },
+    get destroyed() { return ws.readyState !== 1; },
+    write(buf) { if (ws.readyState === 1) ws.send(buf); },
     end() { try { ws.close(); } catch (e) {} },
     destroy() { try { ws.terminate(); } catch (e) {} }
   };

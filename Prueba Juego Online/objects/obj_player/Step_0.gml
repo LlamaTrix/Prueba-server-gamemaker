@@ -42,7 +42,7 @@ if (!_chat_blocked && stun_frames <= 0) {
                         with (obj_client) {
                             if (net.session_ready) net_send_ki_fire(net, false);
                         }
-                        fighter_spawn_ki_blast(self);
+                        fighter_spawn_ki_blast(id);
                     }
                     if (ki_shots >= 5 || ki < 5) { ki_cast_phase = 3; ki_cast_timer = 20; ki_blast_image = 1; }
                     else ki_cast_timer = 5;
@@ -118,7 +118,7 @@ if (!_chat_blocked && stun_frames <= 0) {
             with (obj_client) {
                 if (net.session_ready) net_send_ki_fire(net, _forward_blast);
             }
-            fighter_spawn_ki_blast(self);
+            fighter_spawn_ki_blast(id);
         // A: vanish durante exactamente 2 frames y luego cambiar de dirección.
         } else if (keyboard_check_pressed(ord("A"))) {
             turn_frames = 2;
