@@ -1,0 +1,159 @@
+﻿{
+    "$GMSprite":  "v2",
+    "%Name":  "spr_goku_vanish_sideward",
+    "bboxMode":  0,
+    "bbox_bottom":  49,
+    "bbox_left":  0,
+    "bbox_right":  37,
+    "bbox_top":  0,
+    "collisionKind":  1,
+    "collisionTolerance":  0,
+    "DynamicTexturePage":  false,
+    "edgeFiltering":  false,
+    "For3D":  false,
+    "frames":  [
+                   {
+                       "$GMSpriteFrame":  "v1",
+                       "%Name":  "0d1cc34a-2e8d-3c7e-b7d9-52617dba82fc",
+                       "name":  "0d1cc34a-2e8d-3c7e-b7d9-52617dba82fc",
+                       "resourceType":  "GMSpriteFrame",
+                       "resourceVersion":  "2.0"
+                   }
+               ],
+    "gridX":  0,
+    "gridY":  0,
+    "height":  50,
+    "HTile":  false,
+    "layers":  [
+                   {
+                       "$GMImageLayer":  "",
+                       "%Name":  "58c7d668-2da4-6ba7-f425-858df721e0a1",
+                       "blendMode":  0,
+                       "displayName":  "default",
+                       "isLocked":  false,
+                       "name":  "58c7d668-2da4-6ba7-f425-858df721e0a1",
+                       "opacity":  100,
+                       "resourceType":  "GMImageLayer",
+                       "resourceVersion":  "2.0",
+                       "visible":  true
+                   }
+               ],
+    "name":  "spr_goku_vanish_sideward",
+    "nineSlice":  null,
+    "origin":  9,
+    "parent":  {
+                   "name":  "Sprites",
+                   "path":  "folders/Sprites.yy"
+               },
+    "preMultiplyAlpha":  false,
+    "resourceType":  "GMSprite",
+    "resourceVersion":  "2.0",
+    "sequence":  {
+                     "$GMSequence":  "v1",
+                     "%Name":  "spr_goku_vanish_sideward",
+                     "autoRecord":  true,
+                     "backdropHeight":  768,
+                     "backdropImageOpacity":  0.5,
+                     "backdropImagePath":  "",
+                     "backdropWidth":  1366,
+                     "backdropXOffset":  0,
+                     "backdropYOffset":  0,
+                     "events":  {
+                                    "$KeyframeStore\u003cMessageEventKeyframe\u003e":  "",
+                                    "Keyframes":  [
+
+                                                  ],
+                                    "resourceType":  "KeyframeStore\u003cMessageEventKeyframe\u003e",
+                                    "resourceVersion":  "2.0"
+                                },
+                     "eventStubScript":  null,
+                     "eventToFunction":  {
+
+                                         },
+                     "length":  1,
+                     "lockOrigin":  false,
+                     "moments":  {
+                                     "$KeyframeStore\u003cMomentsEventKeyframe\u003e":  "",
+                                     "Keyframes":  [
+
+                                                   ],
+                                     "resourceType":  "KeyframeStore\u003cMomentsEventKeyframe\u003e",
+                                     "resourceVersion":  "2.0"
+                                 },
+                     "name":  "spr_goku_vanish_sideward",
+                     "playback":  1,
+                     "playbackSpeed":  30,
+                     "playbackSpeedType":  0,
+                     "resourceType":  "GMSequence",
+                     "resourceVersion":  "2.0",
+                     "showBackdrop":  true,
+                     "showBackdropImage":  false,
+                     "timeUnits":  1,
+                     "tracks":  [
+                                    {
+                                        "$GMSpriteFramesTrack":  "",
+                                        "builtinName":  0,
+                                        "events":  [
+
+                                                   ],
+                                        "inheritsTrackColour":  true,
+                                        "interpolation":  1,
+                                        "isCreationTrack":  false,
+                                        "keyframes":  {
+                                                          "$KeyframeStore\u003cSpriteFrameKeyframe\u003e":  "",
+                                                          "Keyframes":  [
+                                                                            {
+                                                                                "$Keyframe\u003cSpriteFrameKeyframe\u003e":  "",
+                                                                                "Channels":  {
+                                                                                                 "0":  {
+                                                                                                           "$SpriteFrameKeyframe":  "",
+                                                                                                           "Id":  {
+                                                                                                                      "name":  "0d1cc34a-2e8d-3c7e-b7d9-52617dba82fc",
+                                                                                                                      "path":  "sprites/spr_goku_vanish_sideward/spr_goku_vanish_sideward.yy"
+                                                                                                                  },
+                                                                                                           "resourceType":  "SpriteFrameKeyframe",
+                                                                                                           "resourceVersion":  "2.0"
+                                                                                                       }
+                                                                                             },
+                                                                                "Disabled":  false,
+                                                                                "id":  "30ab6865-4a18-2ee9-2d41-fe497961b6df",
+                                                                                "IsCreationKey":  false,
+                                                                                "Key":  0,
+                                                                                "Length":  1,
+                                                                                "resourceType":  "Keyframe\u003cSpriteFrameKeyframe\u003e",
+                                                                                "resourceVersion":  "2.0",
+                                                                                "Stretch":  false
+                                                                            }
+                                                                        ],
+                                                          "resourceType":  "KeyframeStore\u003cSpriteFrameKeyframe\u003e",
+                                                          "resourceVersion":  "2.0"
+                                                      },
+                                        "modifiers":  [
+
+                                                      ],
+                                        "name":  "frames",
+                                        "resourceType":  "GMSpriteFramesTrack",
+                                        "resourceVersion":  "2.0",
+                                        "spriteId":  null,
+                                        "trackColour":  0,
+                                        "tracks":  [
+
+                                                   ],
+                                        "traits":  0
+                                    }
+                                ],
+                     "visibleRange":  null,
+                     "volume":  1,
+                     "xorigin":  19,
+                     "yorigin":  50
+                 },
+    "swatchColours":  null,
+    "swfPrecision":  2.525,
+    "textureGroupId":  {
+                           "name":  "Default",
+                           "path":  "texturegroups/Default"
+                       },
+    "type":  0,
+    "VTile":  false,
+    "width":  38
+}

@@ -20,6 +20,14 @@ function fighter_hit_radius(_f) {
     return (_f.attack_kind == ATTACK_NORMAL) ? 15 : 19;
 }
 
+function fighter_spawn_ki_blast(_f) {
+    if (!instance_exists(_f)) return noone;
+    var _blast = instance_create_layer(_f.x + _f.facing * 38, _f.y - 34, "Instances", obj_ki_blast);
+    _blast.travel_direction = _f.facing;
+    _blast.image_xscale = 2 * _f.facing;
+    return _blast;
+}
+
 function fighter_init(_f) {
     // Duraciones editables, expresadas en frames del juego.
     _f.combo_duration_1 = 20;
@@ -41,14 +49,22 @@ function fighter_init(_f) {
     _f.attack_charge_level = 0;
     _f.combo_stage = 0; _f.combo_timer = 0; _f.combo_queued = false; _f.combo_hit = false;
     _f.turn_frames = 0; _f.pending_facing = 1;
+    _f.dash_frames = 0; _f.dash_direction = 1;
+    _f.dash_cooldown = 0; _f.dash_cooldown_frames = 60;
+    _f.dash_tap_timer = 0; _f.dash_tap_direction = 0; _f.dash_tap_window = 12;
+    _f.dash_visual_frames = 5; _f.dash_distance = 30;
     _f.bubble_text = ""; _f.bubble_timer = 0;
     _f.remote_controlled = false;
+    _f.health = 100; _f.ki = 0;
+    _f.ki_charging = false; _f.ki_casting = false; _f.ki_forward = false;
+    _f.ki_cast_phase = 0; _f.ki_cast_timer = 0; _f.ki_shots = 0; _f.ki_blast_image = 0;
     _f.image_speed = 0; _f.image_xscale = 2; _f.image_yscale = 2;
 }
 
 function fighter_receive_hit(_target, _kind, _direction, _charge_level) {
     if (!instance_exists(_target)) return;
     _target.attack_kind = ATTACK_NONE;
+    _target.ki_charging = false; _target.ki_casting = false; _target.ki_cast_phase = 0;
     _target.charging = false; _target.charge_kind = ATTACK_NONE; _target.charge_frames = 0;
     _target.combo_stage = 0; _target.combo_timer = 0; _target.combo_queued = false;
     _target.turn_frames = 0;

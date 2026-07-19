@@ -64,3 +64,8 @@ New-GokuSprite 'spr_goku_downward_hurt' (Join-Path $sourceDir 'Goku_downward_hur
 New-GokuSprite 'spr_goku_strong' (Join-Path $sourceDir 'Goku_strong_strip.png') 2 19 50
 New-GokuSprite 'spr_goku_strong_high' (Join-Path $sourceDir 'Goku_upward_impact_strip.png') 2 18 46
 New-GokuSprite 'spr_goku_strong_low' (Join-Path $sourceDir 'Goku_downward_impact_strip.png') 2 19 46
+New-GokuSprite 'spr_goku_charging' (Join-Path $sourceDir 'Goku_charging.png') 1 25 50
+New-GokuSprite 'spr_goku_blast' (Join-Path $sourceDir 'Goku_blast_strip.png') 2 18 50
+New-GokuSprite 'spr_goku_forward_blast' (Join-Path $sourceDir 'Goku_forward_blast.png') 1 25 50
+New-GokuSprite 'spr_goku_vanish_sideward' (Join-Path $sourceDir 'Goku_vanish_sideward.png') 1 19 50
+New-GokuSprite 'spr_ki_blast' (Join-Path $sourceDir 'Small_blast.png') 1 8 6

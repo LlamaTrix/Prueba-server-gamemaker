@@ -39,6 +39,12 @@ strings = UTF-8 terminados en NUL (formato buffer_string de GameMaker)
 | 11 | `MSG_ATTACK` | cliente → servidor | tipo de golpe + nivel de carga |
 | 12 | `MSG_HIT` | servidor → clientes | UID objetivo + golpe, dirección y carga |
 | 13 | `MSG_ATTACK_STATE` | servidor → clientes | UID atacante + tipo y fase de animación |
+| 14 | `MSG_STATS` | servidor → clientes | UID + vida + ki |
+| 15 | `MSG_KI_CHARGE` | cliente → servidor | iniciar/detener recarga |
+| 16 | `MSG_KI_FIRE` | cliente → servidor | disparo normal o hacia delante |
+| 17 | `MSG_KI_STATE` | servidor → clientes | animación de carga/disparo |
+| 18 | `MSG_DASH` | cliente → servidor | solicitud de dash lateral (`s8` dirección) |
+| 19 | `MSG_DASH_STATE` | servidor → clientes | posición y animación autoritativas del dash |
 
 El servidor marca al jugador como `[AFK]` tras 60 segundos sin movimiento. Si
 no vuelve a moverse durante los 20 segundos siguientes, lo expulsa y cierra su

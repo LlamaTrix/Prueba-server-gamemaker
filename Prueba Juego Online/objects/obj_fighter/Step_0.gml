@@ -1,5 +1,10 @@
 var _was_stunned = stun_frames > 0;
 if (bubble_timer > 0) bubble_timer -= 1;
+if (dash_cooldown > 0) dash_cooldown -= 1;
+if (dash_tap_timer > 0) {
+    dash_tap_timer -= 1;
+    if (dash_tap_timer <= 0) dash_tap_direction = 0;
+}
 if (_was_stunned) {
     stun_frames -= 1;
     if (!remote_controlled) {
@@ -15,10 +20,19 @@ y = _ny;
 
 if (_was_stunned) {
     sprite_index = hurt_sprite; image_index = 0; image_xscale = 2 * facing;
+} else if (dash_frames > 0) {
+    sprite_index = spr_goku_vanish_sideward; image_index = 0; image_xscale = 2 * dash_direction;
+    dash_frames -= 1;
 } else if (turn_frames > 0) {
     sprite_index = spr_goku_vanish; image_index = 0; image_xscale = 2 * facing;
     turn_frames -= 1;
     if (turn_frames <= 0) facing = pending_facing;
+} else if (ki_charging) {
+    sprite_index = spr_goku_charging; image_index = 0; image_xscale = 2 * facing;
+} else if (ki_casting) {
+    sprite_index = ki_forward ? spr_goku_forward_blast : spr_goku_blast;
+    image_index = ki_forward ? 0 : ki_blast_image;
+    image_xscale = 2 * facing;
 } else if (charging) {
     switch (charge_kind) {
         case ATTACK_STRONG: sprite_index = spr_goku_strong; break;

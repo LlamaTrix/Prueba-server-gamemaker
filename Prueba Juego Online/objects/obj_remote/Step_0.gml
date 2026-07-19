@@ -13,4 +13,9 @@ if (attack_kind != ATTACK_NONE && stun_frames <= 0) {
         combo_timer = 0;
     }
 }
+
+if (ki_casting) {
+    ki_cast_timer -= 1;
+    if (ki_cast_timer <= 0) { ki_casting = false; ki_forward = false; }
+}
 event_inherited();

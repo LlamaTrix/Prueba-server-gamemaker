@@ -1,94 +1,188 @@
-{
-  "$GMSprite":"v2",
-  "%Name":"spr_goku_strong_high",
-  "bboxMode":0,
-  "bbox_bottom":44,
-  "bbox_left":3,
-  "bbox_right":32,
-  "bbox_top":1,
-  "collisionKind":1,
-  "collisionTolerance":0,
-  "DynamicTexturePage":false,
-  "edgeFiltering":false,
-  "For3D":false,
-  "frames":[
-    {"$GMSpriteFrame":"v1","%Name":"fcfcac17-b21d-438e-bea2-ccf371e48d42","name":"fcfcac17-b21d-438e-bea2-ccf371e48d42","resourceType":"GMSpriteFrame","resourceVersion":"2.0",},
-    {"$GMSpriteFrame":"v1","%Name":"339e0956-7ea4-d9df-b680-8d25034ef689","name":"339e0956-7ea4-d9df-b680-8d25034ef689","resourceType":"GMSpriteFrame","resourceVersion":"2.0",},
-  ],
-  "gridX":0,
-  "gridY":0,
-  "height":46,
-  "HTile":false,
-  "layers":[
-    {"$GMImageLayer":"","%Name":"ba5c6c1f-0a59-276a-8ce4-ae6e4cf00490","blendMode":0,"displayName":"default","isLocked":false,"name":"ba5c6c1f-0a59-276a-8ce4-ae6e4cf00490","opacity":100.0,"resourceType":"GMImageLayer","resourceVersion":"2.0","visible":true,},
-  ],
-  "name":"spr_goku_strong_high",
-  "nineSlice":null,
-  "origin":9,
-  "parent":{
-    "name":"Sprites",
-    "path":"folders/Sprites.yy",
-  },
-  "preMultiplyAlpha":false,
-  "resourceType":"GMSprite",
-  "resourceVersion":"2.0",
-  "sequence":{
-    "$GMSequence":"v1",
-    "%Name":"spr_goku_strong_high",
-    "autoRecord":true,
-    "backdropHeight":768,
-    "backdropImageOpacity":0.5,
-    "backdropImagePath":"",
-    "backdropWidth":1366,
-    "backdropXOffset":0.0,
-    "backdropYOffset":0.0,
-    "events":{
-      "$KeyframeStore<MessageEventKeyframe>":"",
-      "Keyframes":[],
-      "resourceType":"KeyframeStore<MessageEventKeyframe>",
-      "resourceVersion":"2.0",
-    },
-    "eventStubScript":null,
-    "eventToFunction":{},
-    "length":2.0,
-    "lockOrigin":false,
-    "moments":{
-      "$KeyframeStore<MomentsEventKeyframe>":"",
-      "Keyframes":[],
-      "resourceType":"KeyframeStore<MomentsEventKeyframe>",
-      "resourceVersion":"2.0",
-    },
-    "name":"spr_goku_strong_high",
-    "playback":1,
-    "playbackSpeed":30.0,
-    "playbackSpeedType":0,
-    "resourceType":"GMSequence",
-    "resourceVersion":"2.0",
-    "showBackdrop":true,
-    "showBackdropImage":false,
-    "timeUnits":1,
-    "tracks":[
-      {"$GMSpriteFramesTrack":"","builtinName":0,"events":[],"inheritsTrackColour":true,"interpolation":1,"isCreationTrack":false,"keyframes":{"$KeyframeStore<SpriteFrameKeyframe>":"","Keyframes":[
-            {"$Keyframe<SpriteFrameKeyframe>":"","Channels":{
-                "0":{"$SpriteFrameKeyframe":"","Id":{"name":"fcfcac17-b21d-438e-bea2-ccf371e48d42","path":"sprites/spr_goku_strong_high/spr_goku_strong_high.yy",},"resourceType":"SpriteFrameKeyframe","resourceVersion":"2.0",},
-              },"Disabled":false,"id":"be6779a5-df6e-58dd-be03-cd78d801a71b","IsCreationKey":false,"Key":0.0,"Length":1.0,"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"2.0","Stretch":false,},
-            {"$Keyframe<SpriteFrameKeyframe>":"","Channels":{
-                "0":{"$SpriteFrameKeyframe":"","Id":{"name":"339e0956-7ea4-d9df-b680-8d25034ef689","path":"sprites/spr_goku_strong_high/spr_goku_strong_high.yy",},"resourceType":"SpriteFrameKeyframe","resourceVersion":"2.0",},
-              },"Disabled":false,"id":"766d5a97-a2b2-2a07-4a40-d7008f06f4da","IsCreationKey":false,"Key":1.0,"Length":1.0,"resourceType":"Keyframe<SpriteFrameKeyframe>","resourceVersion":"2.0","Stretch":false,},
-          ],"resourceType":"KeyframeStore<SpriteFrameKeyframe>","resourceVersion":"2.0",},"modifiers":[],"name":"frames","resourceType":"GMSpriteFramesTrack","resourceVersion":"2.0","spriteId":null,"trackColour":0,"tracks":[],"traits":0,},
-    ],
-    "visibleRange":null,
-    "volume":1.0,
-    "xorigin":18,
-    "yorigin":46,
-  },
-  "swatchColours":null,
-  "swfPrecision":2.525,
-  "textureGroupId":{
-    "name":"Default",
-    "path":"texturegroups/Default",
-  },
-  "type":0,
-  "VTile":false,
-  "width":36,
+﻿{
+    "$GMSprite":  "v2",
+    "%Name":  "spr_goku_strong_high",
+    "bboxMode":  0,
+    "bbox_bottom":  45,
+    "bbox_left":  0,
+    "bbox_right":  35,
+    "bbox_top":  0,
+    "collisionKind":  1,
+    "collisionTolerance":  0,
+    "DynamicTexturePage":  false,
+    "edgeFiltering":  false,
+    "For3D":  false,
+    "frames":  [
+                   {
+                       "$GMSpriteFrame":  "v1",
+                       "%Name":  "339e0956-7ea4-d9df-b680-8d25034ef689",
+                       "name":  "339e0956-7ea4-d9df-b680-8d25034ef689",
+                       "resourceType":  "GMSpriteFrame",
+                       "resourceVersion":  "2.0"
+                   },
+                   {
+                       "$GMSpriteFrame":  "v1",
+                       "%Name":  "fcfcac17-b21d-438e-bea2-ccf371e48d42",
+                       "name":  "fcfcac17-b21d-438e-bea2-ccf371e48d42",
+                       "resourceType":  "GMSpriteFrame",
+                       "resourceVersion":  "2.0"
+                   }
+               ],
+    "gridX":  0,
+    "gridY":  0,
+    "height":  46,
+    "HTile":  false,
+    "layers":  [
+                   {
+                       "$GMImageLayer":  "",
+                       "%Name":  "ba5c6c1f-0a59-276a-8ce4-ae6e4cf00490",
+                       "blendMode":  0,
+                       "displayName":  "default",
+                       "isLocked":  false,
+                       "name":  "ba5c6c1f-0a59-276a-8ce4-ae6e4cf00490",
+                       "opacity":  100,
+                       "resourceType":  "GMImageLayer",
+                       "resourceVersion":  "2.0",
+                       "visible":  true
+                   }
+               ],
+    "name":  "spr_goku_strong_high",
+    "nineSlice":  null,
+    "origin":  9,
+    "parent":  {
+                   "name":  "Sprites",
+                   "path":  "folders/Sprites.yy"
+               },
+    "preMultiplyAlpha":  false,
+    "resourceType":  "GMSprite",
+    "resourceVersion":  "2.0",
+    "sequence":  {
+                     "$GMSequence":  "v1",
+                     "%Name":  "spr_goku_strong_high",
+                     "autoRecord":  true,
+                     "backdropHeight":  768,
+                     "backdropImageOpacity":  0.5,
+                     "backdropImagePath":  "",
+                     "backdropWidth":  1366,
+                     "backdropXOffset":  0,
+                     "backdropYOffset":  0,
+                     "events":  {
+                                    "$KeyframeStore\u003cMessageEventKeyframe\u003e":  "",
+                                    "Keyframes":  [
+
+                                                  ],
+                                    "resourceType":  "KeyframeStore\u003cMessageEventKeyframe\u003e",
+                                    "resourceVersion":  "2.0"
+                                },
+                     "eventStubScript":  null,
+                     "eventToFunction":  {
+
+                                         },
+                     "length":  2,
+                     "lockOrigin":  false,
+                     "moments":  {
+                                     "$KeyframeStore\u003cMomentsEventKeyframe\u003e":  "",
+                                     "Keyframes":  [
+
+                                                   ],
+                                     "resourceType":  "KeyframeStore\u003cMomentsEventKeyframe\u003e",
+                                     "resourceVersion":  "2.0"
+                                 },
+                     "name":  "spr_goku_strong_high",
+                     "playback":  1,
+                     "playbackSpeed":  30,
+                     "playbackSpeedType":  0,
+                     "resourceType":  "GMSequence",
+                     "resourceVersion":  "2.0",
+                     "showBackdrop":  true,
+                     "showBackdropImage":  false,
+                     "timeUnits":  1,
+                     "tracks":  [
+                                    {
+                                        "$GMSpriteFramesTrack":  "",
+                                        "builtinName":  0,
+                                        "events":  [
+
+                                                   ],
+                                        "inheritsTrackColour":  true,
+                                        "interpolation":  1,
+                                        "isCreationTrack":  false,
+                                        "keyframes":  {
+                                                          "$KeyframeStore\u003cSpriteFrameKeyframe\u003e":  "",
+                                                          "Keyframes":  [
+                                                                            {
+                                                                                "$Keyframe\u003cSpriteFrameKeyframe\u003e":  "",
+                                                                                "Channels":  {
+                                                                                                 "0":  {
+                                                                                                           "$SpriteFrameKeyframe":  "",
+                                                                                                           "Id":  {
+                                                                                                                      "name":  "339e0956-7ea4-d9df-b680-8d25034ef689",
+                                                                                                                      "path":  "sprites/spr_goku_strong_high/spr_goku_strong_high.yy"
+                                                                                                                  },
+                                                                                                           "resourceType":  "SpriteFrameKeyframe",
+                                                                                                           "resourceVersion":  "2.0"
+                                                                                                       }
+                                                                                             },
+                                                                                "Disabled":  false,
+                                                                                "id":  "766d5a97-a2b2-2a07-4a40-d7008f06f4da",
+                                                                                "IsCreationKey":  false,
+                                                                                "Key":  0,
+                                                                                "Length":  1,
+                                                                                "resourceType":  "Keyframe\u003cSpriteFrameKeyframe\u003e",
+                                                                                "resourceVersion":  "2.0",
+                                                                                "Stretch":  false
+                                                                            },
+                                                                            {
+                                                                                "$Keyframe\u003cSpriteFrameKeyframe\u003e":  "",
+                                                                                "Channels":  {
+                                                                                                 "0":  {
+                                                                                                           "$SpriteFrameKeyframe":  "",
+                                                                                                           "Id":  {
+                                                                                                                      "name":  "fcfcac17-b21d-438e-bea2-ccf371e48d42",
+                                                                                                                      "path":  "sprites/spr_goku_strong_high/spr_goku_strong_high.yy"
+                                                                                                                  },
+                                                                                                           "resourceType":  "SpriteFrameKeyframe",
+                                                                                                           "resourceVersion":  "2.0"
+                                                                                                       }
+                                                                                             },
+                                                                                "Disabled":  false,
+                                                                                "id":  "be6779a5-df6e-58dd-be03-cd78d801a71b",
+                                                                                "IsCreationKey":  false,
+                                                                                "Key":  1,
+                                                                                "Length":  1,
+                                                                                "resourceType":  "Keyframe\u003cSpriteFrameKeyframe\u003e",
+                                                                                "resourceVersion":  "2.0",
+                                                                                "Stretch":  false
+                                                                            }
+                                                                        ],
+                                                          "resourceType":  "KeyframeStore\u003cSpriteFrameKeyframe\u003e",
+                                                          "resourceVersion":  "2.0"
+                                                      },
+                                        "modifiers":  [
+
+                                                      ],
+                                        "name":  "frames",
+                                        "resourceType":  "GMSpriteFramesTrack",
+                                        "resourceVersion":  "2.0",
+                                        "spriteId":  null,
+                                        "trackColour":  0,
+                                        "tracks":  [
+
+                                                   ],
+                                        "traits":  0
+                                    }
+                                ],
+                     "visibleRange":  null,
+                     "volume":  1,
+                     "xorigin":  18,
+                     "yorigin":  46
+                 },
+    "swatchColours":  null,
+    "swfPrecision":  2.525,
+    "textureGroupId":  {
+                           "name":  "Default",
+                           "path":  "texturegroups/Default"
+                       },
+    "type":  0,
+    "VTile":  false,
+    "width":  36
 }

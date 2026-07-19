@@ -36,6 +36,14 @@ const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
 const MSG_ATTACK = 11; // cliente -> servidor: u8 tipo + u8 nivel de carga
 const MSG_HIT = 12;    // servidor -> clientes: u16 objetivo + u8 tipo + s8 dirección + u8 carga
 const MSG_ATTACK_STATE = 13; // servidor -> clientes: u16 atacante + u8 tipo + u8 fase
+const MSG_STATS = 14;        // servidor -> clientes: u16 uid + u8 vida + u8 ki
+const MSG_KI_CHARGE = 15;    // cliente -> servidor: u8 activo
+const MSG_KI_FIRE = 16;      // cliente -> servidor: u8 disparo frontal
+const MSG_KI_STATE = 17;     // servidor -> clientes: u16 uid + u8 estado
+const MSG_DASH = 18;         // cliente -> servidor: s8 dirección lateral
+const MSG_DASH_STATE = 19;   // servidor -> clientes: u16 uid + u16 x + u16 y + s8 dirección
+const DASH_COOLDOWN_MS = 1000;
+const DASH_DISTANCE = 30;
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -96,6 +104,31 @@ function worldWriter() {
 
 function broadcastPosition(c) {
   broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
+}
+
+function broadcastStats(c) {
+  broadcast(new Writer().u8(MSG_STATS).u16(c.uid).u8(c.health).u8(c.ki));
+}
+
+function findKiTarget(attacker) {
+  let best = null;
+  let bestForward = Infinity;
+  for (const candidate of clients.values()) {
+    if (candidate.name === null || candidate.uid === attacker.uid) continue;
+    const forward = (candidate.x - attacker.x) * attacker.facing;
+    if (forward <= 0 || forward > 280 || Math.abs(candidate.y - attacker.y) > 55) continue;
+    if (forward < bestForward) { best = candidate; bestForward = forward; }
+  }
+  return best;
+}
+
+function applyDamage(target, damage) {
+  target.health = Math.max(0, target.health - damage);
+  if (target.kiCharging) {
+    target.kiCharging = false;
+    broadcast(new Writer().u8(MSG_KI_STATE).u16(target.uid).u8(0));
+  }
+  broadcastStats(target);
 }
 
 function findAttackTarget(attacker, kind) {
@@ -166,6 +199,7 @@ function handleMessage(socket, payload) {
     send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid).u16(c.x).u16(c.y));
     broadcast(playerListWriter());
     broadcast(worldWriter());
+    for (const player of clients.values()) if (player.name !== null) send(socket, new Writer().u8(MSG_STATS).u16(player.uid).u8(player.health).u8(player.ki));
     systemChat(`${name} entró al lobby`);
     console.log(`[+] ${name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
 
@@ -206,9 +240,44 @@ function handleMessage(socket, payload) {
 
     const target = findAttackTarget(c, kind);
     if (target) {
+      const damage = kind === 1 ? 3 : 5 + charge;
+      applyDamage(target, damage);
       broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge));
       console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
     }
+
+  } else if (msg === MSG_KI_CHARGE && c.name !== null && payload.length >= 2) {
+    const active = payload.readUInt8(1) !== 0;
+    if (c.kiCharging !== active) {
+      c.kiCharging = active;
+      broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(active ? 1 : 0));
+    }
+
+  } else if (msg === MSG_KI_FIRE && c.name !== null && payload.length >= 2) {
+    const now = Date.now();
+    if (c.ki < 5 || now - c.lastKiFireAt < 70) return;
+    c.lastKiFireAt = now;
+    c.ki -= 5;
+    const forwardBlast = payload.readUInt8(1) !== 0;
+    broadcastStats(c);
+    broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(forwardBlast ? 3 : 2));
+    const target = findKiTarget(c);
+    if (target) {
+      applyDamage(target, 3);
+      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0));
+    }
+
+  } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
+    const now = Date.now();
+    const direction = payload.readInt8(1) < 0 ? -1 : 1;
+    if (c.ki < 5 || now - c.lastDashAt < DASH_COOLDOWN_MS) return;
+    c.lastDashAt = now;
+    c.ki -= 5;
+    c.x = Math.max(20, Math.min(3980, c.x + direction * DASH_DISTANCE));
+    c.lastMovementAt = now;
+    broadcastStats(c);
+    broadcast(new Writer().u8(MSG_DASH_STATE).u16(c.uid).u16(c.x).u16(c.y).s8(direction));
+    broadcastPosition(c);
 
   } else if (msg === MSG_ACTIVITY && c.name !== null) {
     c.lastMovementAt = Date.now();
@@ -242,7 +311,12 @@ const server = net.createServer(socket => {
     x: 2000,
     y: 2000,
     facing: 1,
-    lastAttackAt: 0
+    lastAttackAt: 0,
+    health: 100,
+    ki: 0,
+    kiCharging: false,
+    lastKiFireAt: 0,
+    lastDashAt: 0
   });
   console.log(`[~] conexión desde ${socket.remoteAddress}`);
 
@@ -306,6 +380,15 @@ setInterval(() => {
     }
   }
 }, 1000);
+
+// Recarga de ki autoritativa: aproximadamente un punto por frame (60/s).
+setInterval(() => {
+  for (const c of clients.values()) {
+    if (c.name === null || !c.kiCharging || c.ki >= 100) continue;
+    c.ki += 1;
+    broadcastStats(c);
+  }
+}, 1000 / 60);
 
 // ---------- página de estado (detrás de nginx en prueba.minecruz.com) ----------
 

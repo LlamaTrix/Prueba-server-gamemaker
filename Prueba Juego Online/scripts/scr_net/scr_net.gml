@@ -17,6 +17,12 @@
 #macro MSG_ATTACK      11
 #macro MSG_HIT         12
 #macro MSG_ATTACK_STATE 13
+#macro MSG_STATS        14
+#macro MSG_KI_CHARGE    15
+#macro MSG_KI_FIRE      16
+#macro MSG_KI_STATE     17
+#macro MSG_DASH         18
+#macro MSG_DASH_STATE   19
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -121,6 +127,33 @@ function net_send_attack(_state, _kind, _charge_level, _combo_stage) {
     buffer_write(_payload, buffer_u8, _kind);
     buffer_write(_payload, buffer_u8, clamp(_charge_level, 0, 3));
     buffer_write(_payload, buffer_u8, clamp(_combo_stage, 0, 3));
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_send_ki_charge(_state, _active) {
+    var _payload = buffer_create(2, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_KI_CHARGE);
+    buffer_write(_payload, buffer_u8, _active ? 1 : 0);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_send_ki_fire(_state, _forward) {
+    var _payload = buffer_create(2, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_KI_FIRE);
+    buffer_write(_payload, buffer_u8, _forward ? 1 : 0);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_send_dash(_state, _direction) {
+    var _payload = buffer_create(2, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_DASH);
+    buffer_write(_payload, buffer_s8, _direction);
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;
@@ -259,12 +292,79 @@ function net_read_payload(_state, _payload) {
                 if (_attacker != noone) {
                     _attacker.attack_kind = _attacker_kind;
                     _attacker.combo_stage = _attacker_stage;
-                    _attacker.combo_timer = (_attacker_stage == 1) ? _attacker.combo_duration_1
-                        : (_attacker_stage == 2) ? _attacker.combo_duration_2
-                        : (_attacker_stage == 3) ? _attacker.combo_duration_3
-                        : _attacker.strong_duration;
+                    switch (_attacker_stage) {
+                        case 1:
+                            _attacker.combo_timer = _attacker.combo_duration_1;
+                            break;
+                        case 2:
+                            _attacker.combo_timer = _attacker.combo_duration_2;
+                            break;
+                        case 3:
+                            _attacker.combo_timer = _attacker.combo_duration_3;
+                            break;
+                        default:
+                            _attacker.combo_timer = _attacker.strong_duration;
+                            break;
+                    }
                     _attacker.combo_hit = true;
                 }
+            }
+            break;
+
+        case MSG_STATS:
+            var _stats_uid = buffer_read(_payload, buffer_u16);
+            var _stats_health = buffer_read(_payload, buffer_u8);
+            var _stats_ki = buffer_read(_payload, buffer_u8);
+            var _stats_target = noone;
+            if (_stats_uid == _state.uid && instance_number(obj_player) > 0) {
+                _stats_target = instance_find(obj_player, 0);
+            } else {
+                _stats_target = net_find_remote(_stats_uid);
+            }
+            if (_stats_target != noone) {
+                _stats_target.health = _stats_health;
+                _stats_target.ki = _stats_ki;
+            }
+            break;
+
+        case MSG_KI_STATE:
+            var _ki_uid = buffer_read(_payload, buffer_u16);
+            var _ki_state = buffer_read(_payload, buffer_u8);
+            if (_ki_uid != _state.uid) {
+                var _ki_remote = net_find_remote(_ki_uid);
+                if (_ki_remote != noone) {
+                    _ki_remote.ki_charging = _ki_state == 1;
+                    if (_ki_state == 2 || _ki_state == 3) {
+                        _ki_remote.ki_casting = true;
+                        _ki_remote.ki_forward = _ki_state == 3;
+                        _ki_remote.ki_cast_timer = (_ki_state == 3) ? 10 : 20;
+                        _ki_remote.ki_blast_image = 1;
+                        fighter_spawn_ki_blast(_ki_remote);
+                    }
+                }
+            }
+            break;
+
+        case MSG_DASH_STATE:
+            var _dash_uid = buffer_read(_payload, buffer_u16);
+            var _dash_x = buffer_read(_payload, buffer_u16);
+            var _dash_y = buffer_read(_payload, buffer_u16);
+            var _dash_direction = buffer_read(_payload, buffer_s8);
+            var _dash_target = noone;
+            if (_dash_uid == _state.uid && instance_number(obj_player) > 0) {
+                _dash_target = instance_find(obj_player, 0);
+                _dash_target.x = _dash_x;
+                _dash_target.y = _dash_y;
+            } else {
+                _dash_target = net_find_remote(_dash_uid);
+                if (_dash_target != noone) {
+                    _dash_target.target_x = _dash_x;
+                    _dash_target.target_y = _dash_y;
+                }
+            }
+            if (_dash_target != noone) {
+                _dash_target.dash_direction = _dash_direction;
+                _dash_target.dash_frames = _dash_target.dash_visual_frames;
             }
             break;
 
