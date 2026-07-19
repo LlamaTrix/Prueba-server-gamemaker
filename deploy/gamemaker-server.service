@@ -7,6 +7,8 @@ Type=simple
 User=ivan
 WorkingDirectory=/home/ivan/Prueba-server-gamemaker/server
 ExecStart=/usr/bin/node server.js
+Environment=NODE_ENV=production
+UMask=0077
 Restart=always
 RestartSec=3
 

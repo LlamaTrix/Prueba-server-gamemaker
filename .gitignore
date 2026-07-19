@@ -3,3 +3,13 @@ Thumbs.db
 desktop.ini
 .DS_Store
 *.stackdump
+server/data/users.json
+server/data/auth-secret
+server/data/*.tmp
+
+# artefactos de build/verify de GameMaker
+.build/
+.gm_audit/
+.gm_html_audit/
+.gm_html_verify/
+.gm_verify/

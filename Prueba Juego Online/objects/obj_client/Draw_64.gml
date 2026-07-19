@@ -5,7 +5,7 @@ if (net.status == "error") {
     draw_set_color(c_red);
     draw_text_ext(10, 10, net.error, 18, 380);
     draw_set_color(c_white);
-    draw_text(10, 64, "R: reconectar");
+    draw_text(10, 64, "R: volver al menú");
     exit;
 }
 
@@ -17,15 +17,17 @@ if (net.status != "online") {
 
 // HUD compacto: deja visible el mundo y los luchadores.
 draw_set_color(make_color_rgb(15, 20, 28));
-draw_rectangle(5, 5, 395, 34, false);
+draw_rectangle(5, 5, 395, 48, false);
 draw_set_color(c_aqua);
-draw_text(10, 10, username + "  |  jugadores: " + string(array_length(net.players)));
+draw_text(10, 8, username);
+draw_text(10, 27, "Jugadores: " + string(array_length(net.players)));
 
 if (instance_number(obj_player) > 0) {
     var _player = instance_find(obj_player, 0);
     draw_set_halign(fa_right);
     draw_set_color(c_white);
-    draw_text(390, 10, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
+    draw_text(390, 8, "Ping " + (net.ping_ms >= 0 ? string(round(net.ping_ms)) + " ms" : "-- ms"));
+    draw_text(390, 27, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
     draw_set_halign(fa_left);
 }
 

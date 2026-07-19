@@ -1,5 +1,4 @@
-// Servidor de lobby + chat para el juego de GameMaker.
-// Sin dependencias: solo el módulo net de Node.
+// Servidor autoritativo, REST y autenticación para el juego de GameMaker.
 //
 // Protocolo (TCP raw, little-endian):
 //   Cada trama = [u16 largo del payload][payload]
@@ -7,7 +6,7 @@
 //   Los strings son UTF-8 terminados en NUL (igual que buffer_string de GameMaker).
 //
 // Mensajes:
-//   1 MSG_JOIN         cliente -> servidor : string nombre
+//   1 MSG_JOIN         cliente -> servidor : string ticket efímero
 //   2 MSG_WELCOME      servidor -> cliente : u16 uid
 //   3 MSG_PLAYER_LIST  servidor -> todos   : u16 cantidad, N strings
 //   4 MSG_CHAT         cliente -> servidor : string texto
@@ -16,14 +15,31 @@
 const net = require('net');
 const http = require('http');
 const readline = require('readline');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { WebSocketServer } = require('ws');
+const { AuthError, AuthStore } = require('./auth-store');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6510;
 const HTTP_PORT = process.env.HTTP_PORT ? Number(process.env.HTTP_PORT) : 6511;
 const WS_PORT = process.env.WS_PORT ? Number(process.env.WS_PORT) : 6512;
-const MAX_NAME_LEN = 24;
 const MAX_CHAT_LEN = 200;
 const SERVER_NAME = '-servidor-';
+const WORLD_WIDTH = 4000;
+const WORLD_HEIGHT = 4000;
+const PLAYER_MIN_X = 20;
+const PLAYER_MAX_X = WORLD_WIDTH - 20;
+const PLAYER_MIN_Y = 48;
+const PLAYER_MAX_Y = WORLD_HEIGHT - 10;
+const MOVEMENT_SPEED_PER_SECOND = 180;
+const GAME_TICKET_TTL_MS = 30_000;
+const AUTH_DB_PATH = process.env.AUTH_DB_PATH
+  ? path.resolve(process.env.AUTH_DB_PATH)
+  : path.join(__dirname, 'data', 'users.json');
+const AUTH_SECRET_PATH = process.env.AUTH_SECRET_PATH
+  ? path.resolve(process.env.AUTH_SECRET_PATH)
+  : path.join(__dirname, 'data', 'auth-secret');
 
 const MSG_JOIN = 1;
 const MSG_WELCOME = 2;
@@ -32,11 +48,9 @@ const MSG_CHAT = 4;
 const MSG_ACTIVITY = 5;
 const MSG_KICK = 6;
 const MSG_LEAVE = 7;
-const MSG_WORLD = 8;   // servidor -> clientes: snapshot de todos (uid, nombre, x, y, facing)
 const MSG_POS = 9;     // posición y dirección de un jugador
 const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
 const MSG_ATTACK = 11; // cliente -> servidor: u8 tipo + u8 nivel de carga
-const MSG_HIT = 12;    // servidor -> clientes: objetivo, golpe, vida y posición autoritativa
 const MSG_ATTACK_STATE = 13; // servidor -> clientes: u16 atacante + u8 tipo + u8 fase
 const MSG_STATS = 14;        // servidor -> clientes: u16 uid + u8 vida + u8 ki
 const MSG_KI_CHARGE = 15;    // cliente -> servidor: u8 activo
@@ -44,14 +58,17 @@ const MSG_KI_FIRE = 16;      // cliente -> servidor: u8 disparo frontal
 const MSG_KI_STATE = 17;     // servidor -> clientes: u16 uid + u8 estado
 const MSG_DASH = 18;         // cliente -> servidor: s8 dirección lateral
 const MSG_DASH_STATE = 19;   // servidor -> clientes: u16 uid + u16 x + u16 y + s8 dirección
-const MSG_KI_HIT = 20;       // cliente -> servidor: u16 objetivo (impacto de onda de ki)
 const MSG_INPUT = 21;
-const MSG_SNAPSHOT = 22;
 const MSG_PING = 23;
 const MSG_PONG = 24;
 const MSG_NAME_REJECT = 25;
 const MSG_SERVER_QUERY = 26;
 const MSG_SERVER_INFO = 27;
+const MSG_COMBAT_EVENT = 28;
+const MSG_PROJECTILE_SPAWN = 29;
+const MSG_PROJECTILE_DESTROY = 30;
+const MSG_WORLD_STATE = 31;
+const MSG_WORLD_SNAPSHOT = 32;
 const DASH_COOLDOWN_MS = 1000;
 const DASH_DISTANCE = 30;
 
@@ -59,7 +76,63 @@ const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS)
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
 
 let nextUid = 1;
+let nextCombatEventId = 1;
+let nextProjectileId = 1;
 const clients = new Map(); // socket -> { uid, name, inbuf, lastMovementAt, afk }
+const projectiles = new Map();
+const gameTickets = new Map();
+
+function loadOrCreateAuthSecret() {
+  if (process.env.AUTH_TOKEN_SECRET) return process.env.AUTH_TOKEN_SECRET;
+  fs.mkdirSync(path.dirname(AUTH_SECRET_PATH), { recursive: true });
+  try {
+    return fs.readFileSync(AUTH_SECRET_PATH, 'utf8').trim();
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const generated = crypto.randomBytes(48).toString('base64url');
+  try {
+    fs.writeFileSync(AUTH_SECRET_PATH, `${generated}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    return generated;
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    return fs.readFileSync(AUTH_SECRET_PATH, 'utf8').trim();
+  }
+}
+
+const authStore = new AuthStore({
+  filePath: AUTH_DB_PATH,
+  sessionSecret: loadOrCreateAuthSecret(),
+  sessionTtlSeconds: 24 * 60 * 60
+});
+const authReady = authStore.initialize();
+
+function hashTicket(ticket) {
+  return crypto.createHash('sha256').update(ticket, 'utf8').digest('hex');
+}
+
+function issueGameTicket(session) {
+  for (const [key, record] of gameTickets) {
+    if (record.accountId === session.user.id) gameTickets.delete(key);
+  }
+  const ticket = crypto.randomBytes(32).toString('base64url');
+  gameTickets.set(hashTicket(ticket), {
+    accountId: session.user.id,
+    username: session.user.username,
+    expiresAt: Date.now() + GAME_TICKET_TTL_MS
+  });
+  return ticket;
+}
+
+function consumeGameTicket(ticket) {
+  if (typeof ticket !== 'string' || ticket.length < 32 || ticket.length > 128) return null;
+  const key = hashTicket(ticket);
+  const record = gameTickets.get(key);
+  gameTickets.delete(key);
+  if (!record || record.expiresAt <= Date.now()) return null;
+  return record;
+}
 
 function allocateUid() {
   for (let attempt = 0; attempt < 65535; attempt++) {
@@ -82,6 +155,7 @@ class Writer {
   u16(v) { const b = Buffer.alloc(2); b.writeUInt16LE(Math.max(0, Math.min(65535, Math.round(v)))); this.parts.push(b); return this; }
   u32(v) { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); this.parts.push(b); return this; }
   s8(v)  { const b = Buffer.alloc(1); b.writeInt8(v); this.parts.push(b); return this; }
+  s16(v) { const b = Buffer.alloc(2); b.writeInt16LE(v); this.parts.push(b); return this; }
   str(s) { this.parts.push(Buffer.from(String(s), 'utf8'), Buffer.from([0])); return this; }
   frame() {
     const payload = Buffer.concat(this.parts);
@@ -128,8 +202,11 @@ function playerListWriter() {
 
 function worldWriter() {
   const players = [...clients.values()].filter(c => c.name !== null);
-  const w = new Writer().u8(MSG_WORLD).u16(players.length);
-  for (const c of players) w.u16(c.uid).str(c.name).u16(c.x).u16(c.y).s8(c.facing);
+  const w = new Writer().u8(MSG_WORLD_STATE).u16(players.length);
+  for (const c of players) {
+    w.u16(c.uid).str(c.name).u16(c.x).u16(c.y).s8(c.facing)
+      .u8(c.health).u8(c.ki).u32(c.stateRevision);
+  }
   return w;
 }
 
@@ -137,8 +214,13 @@ function broadcastPosition(c) {
   broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
 }
 
-function broadcastSnapshot(c) {
-  broadcast(new Writer().u8(MSG_SNAPSHOT).u16(c.uid).u32(c.lastInputSeq).u16(c.x).u16(c.y).s8(c.facing));
+function worldSnapshotWriter() {
+  const players = [...clients.values()].filter(c => c.name !== null);
+  const writer = new Writer().u8(MSG_WORLD_SNAPSHOT).u16(players.length);
+  for (const c of players) {
+    writer.u16(c.uid).u32(c.lastInputSeq).u16(c.x).u16(c.y).s8(c.facing);
+  }
+  return writer;
 }
 
 function broadcastStats(c, exceptSocket = null) {
@@ -150,18 +232,37 @@ function broadcastStats(c, exceptSocket = null) {
 
 function broadcastWorldAndStats() {
   broadcast(worldWriter());
-  for (const player of clients.values()) {
-    if (player.name !== null) broadcastStats(player);
-  }
 }
 
-function applyDamage(target, damage) {
-  target.health = Math.max(0, target.health - damage);
+function commitCombatEvent(attacker, target, kind, damage, charge) {
+  const oldX = target.x;
+  const oldY = target.y;
+  target.health = Math.max(0, target.health - Math.max(0, damage));
+  target.stateRevision += 1;
+  target.inputDx = 0;
+  target.inputDy = 0;
   if (target.kiCharging) {
     target.kiCharging = false;
     broadcast(new Writer().u8(MSG_KI_STATE).u16(target.uid).u8(0));
   }
-  broadcastStats(target);
+
+  const push = 30 + charge;
+  if (kind === 2) target.x = Math.max(PLAYER_MIN_X, Math.min(PLAYER_MAX_X, target.x + attacker.facing * push));
+  if (kind === 3) target.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, target.y - push));
+  if (kind === 4) target.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, target.y + push));
+
+  const eventId = nextCombatEventId++;
+  if (nextCombatEventId > 0xffffffff) nextCombatEventId = 1;
+  broadcast(new Writer()
+    .u8(MSG_COMBAT_EVENT).u32(eventId)
+    .u16(attacker.uid).u16(target.uid)
+    .u32(target.stateRevision).u8(kind).u8(damage).u8(target.health).u8(target.ki)
+    .s8(attacker.facing).u8(charge)
+    .s16(Math.round(target.x - oldX)).s16(Math.round(target.y - oldY))
+    .u16(target.x).u16(target.y));
+  if (kind >= 2 && kind <= 4) broadcastPosition(target);
+  target.stunUntil = Date.now() + (kind === 1 ? 200 : 300);
+  return eventId;
 }
 
 function findAttackTarget(attacker, kind) {
@@ -194,6 +295,27 @@ function nearestOpponent(c) {
     if (d < nd) { nd = d; nn = o.name; }
   }
   return { name: nn, dist: nd };
+}
+
+function spawnProjectile(owner) {
+  const projectile = {
+    id: nextProjectileId++, owner,
+    x: owner.x + owner.facing * 52,
+    y: owner.y - 50,
+    vx: owner.facing * 6,
+    direction: owner.facing,
+    life: 180
+  };
+  if (nextProjectileId > 0xffffffff) nextProjectileId = 1;
+  projectiles.set(projectile.id, projectile);
+  broadcast(new Writer().u8(MSG_PROJECTILE_SPAWN).u32(projectile.id)
+    .u16(owner.uid).u16(projectile.x).u16(projectile.y).s8(projectile.direction));
+}
+
+function destroyProjectile(projectile, hit) {
+  if (!projectiles.delete(projectile.id)) return;
+  broadcast(new Writer().u8(MSG_PROJECTILE_DESTROY).u32(projectile.id)
+    .u16(projectile.x).u16(projectile.y).u8(hit ? 1 : 0));
 }
 
 function systemChat(text) {
@@ -237,15 +359,17 @@ function handleMessage(socket, payload) {
   } else if (msg === MSG_JOIN && c.name === null) {
     const r = readString(payload, 1);
     if (!r) return;
-    let name = r.value.trim().slice(0, MAX_NAME_LEN);
-    if (name === '') {
-      send(socket, new Writer().u8(MSG_NAME_REJECT).str('El nombre es obligatorio'));
+    const identity = consumeGameTicket(r.value);
+    if (!identity) {
+      send(socket, new Writer().u8(MSG_NAME_REJECT).str('El ticket de juego es inválido o venció'));
+      socket.end();
       return;
     }
     const duplicate = [...clients.values()].some(other => other !== c && other.name !== null
-      && other.name.toLowerCase() === name.toLowerCase());
+      && other.accountId === identity.accountId);
     if (duplicate) {
-      send(socket, new Writer().u8(MSG_NAME_REJECT).str('Ese nombre ya está en uso'));
+      send(socket, new Writer().u8(MSG_NAME_REJECT).str('Esta cuenta ya está dentro de la partida'));
+      socket.end();
       return;
     }
     c.uid = allocateUid();
@@ -254,17 +378,18 @@ function handleMessage(socket, payload) {
       socket.end();
       return;
     }
-    c.name = name;
-    c.x = 100 + Math.floor(Math.random() * 1801);
-    c.y = 100 + Math.floor(Math.random() * 1801);
+    c.accountId = identity.accountId;
+    c.name = identity.username;
+    c.x = 100 + Math.floor(Math.random() * (WORLD_WIDTH - 200));
+    c.y = 100 + Math.floor(Math.random() * (WORLD_HEIGHT - 200));
     c.facing = 1;
     c.lastMovementAt = Date.now();
 
     send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid).u16(c.x).u16(c.y));
     broadcast(playerListWriter());
     broadcastWorldAndStats();
-    systemChat(`${name} entró al lobby`);
-    console.log(`[+] ${name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
+    systemChat(`${c.name} entró al lobby`);
+    console.log(`[+] ${c.name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
 
   } else if (msg === MSG_CHAT && c.name !== null) {
     const r = readString(payload, 1);
@@ -282,19 +407,20 @@ function handleMessage(socket, payload) {
     const dx = Math.max(-1, Math.min(1, payload.readInt8(5)));
     const dy = Math.max(-1, Math.min(1, payload.readInt8(6)));
     c.facing = payload.readInt8(7) < 0 ? -1 : 1;
-    const length = Math.hypot(dx, dy);
-    if (length > 0) {
-      c.x = Math.max(20, Math.min(1980, c.x + dx / length * 3));
-      c.y = Math.max(48, Math.min(1990, c.y + dy / length * 3));
+    if (Date.now() >= c.stunUntil) {
+      c.inputDx = dx;
+      c.inputDy = dy;
+    } else {
+      c.inputDx = 0;
+      c.inputDy = 0;
     }
-    c.lastMovementAt = Date.now();
+    c.lastInputAt = Date.now();
+    if (dx !== 0 || dy !== 0) c.lastMovementAt = Date.now();
     if (c.afk) {
       c.afk = false;
       broadcast(playerListWriter());
       systemChat(`${c.name} ya no está AFK`);
     }
-    broadcastSnapshot(c);
-
   } else if (msg === MSG_POS && c.name !== null) {
     // Compatibilidad: las posiciones enviadas por clientes ya no son autoridad.
     return;
@@ -302,15 +428,19 @@ function handleMessage(socket, payload) {
   } else if (msg === MSG_PING && c.name !== null && payload.length >= 5) {
     send(socket, new Writer().u8(MSG_PONG).u32(payload.readUInt32LE(1)));
 
-  } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 3) {
+  } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 8) {
     const now = Date.now();
-    if (now - c.lastAttackAt < 100) return;
-    c.lastAttackAt = now;
+    if (now < c.stunUntil) return;
 
     const kind = payload.readUInt8(1);
     if (kind < 1 || kind > 4) return;
     let charge = Math.min(3, payload.readUInt8(2));
     const comboStage = payload.length >= 4 ? Math.min(3, payload.readUInt8(3)) : 0;
+    const actionSequence = payload.readUInt32LE(4);
+    if (actionSequence <= c.lastCombatAction) return;
+    if (now - c.lastAttackAt < 100) return;
+    c.lastCombatAction = actionSequence;
+    c.lastAttackAt = now;
     if (kind === 1 || kind === 2) charge = 0;
 
     // Todos ven la animación del atacante, incluso cuando el golpe no alcanza a nadie.
@@ -318,16 +448,8 @@ function handleMessage(socket, payload) {
 
     const target = findAttackTarget(c, kind);
     if (target) {
-      const damage = kind === 1 ? 8 : 15 + charge * 2;
-      applyDamage(target, damage);
-      // El servidor mueve también la posición autoritativa para que el empuje
-      // sea visible de forma consistente tanto en escritorio como en HTML5.
-      // Empuje 200% más fuerte (x3) que el valor base.
-      if (kind === 2) target.x = Math.max(20, Math.min(1980, target.x + c.facing * (30 + charge) * 3));
-      if (kind === 3) target.y = Math.max(48, Math.min(1990, target.y - (30 + charge) * 3));
-      if (kind === 4) target.y = Math.max(48, Math.min(1990, target.y + (30 + charge) * 3));
-      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge).u8(target.health).u16(target.x).u16(target.y));
-      if (kind !== 1) broadcastPosition(target);
+      const damage = kind === 1 ? 3 : 5 + charge;
+      commitCombatEvent(c, target, kind, damage, charge);
       console.log(`[hit] ${c.name} -> ${target.name} tipo ${kind} dmg ${damage} vida ${target.health}`);
     } else {
       const near = nearestOpponent(c);
@@ -343,40 +465,26 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_KI_FIRE && c.name !== null && payload.length >= 2) {
     const now = Date.now();
+    if (now < c.stunUntil) return;
     if (c.ki < 5 || now - c.lastKiFireAt < 70) return;
     c.lastKiFireAt = now;
     c.ki -= 5;
     const forwardBlast = payload.readUInt8(1) !== 0;
-    broadcastStats(c, socket);
-    // Solo dispara la animación; el daño lo aplica el impacto real del proyectil (MSG_KI_HIT).
+    broadcastStats(c);
+    // La simulación y el impacto del proyectil viven completamente en el servidor.
     broadcastExcept(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(forwardBlast ? 3 : 2), socket);
-
-  } else if (msg === MSG_KI_HIT && c.name !== null && payload.length >= 3) {
-    // El cliente que lanzó la onda avisa que impactó a alguien. El servidor valida y aplica daño.
-    const now = Date.now();
-    if (now - (c.lastKiHitAt || 0) < 60) return; // una onda golpea una sola vez
-    const targetUid = payload.readUInt16LE(1);
-    let target = null;
-    for (const t of clients.values()) {
-      if (t.name !== null && t.uid === targetUid) { target = t; break; }
-    }
-    if (!target || target.uid === c.uid) return;
-    // Anti-trampa: el objetivo debe estar a un rango plausible del atacante.
-    if (Math.hypot(target.x - c.x, target.y - c.y) > 1150) return;
-    c.lastKiHitAt = now;
-    applyDamage(target, 3);
-    broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0).u8(target.health).u16(target.x).u16(target.y));
-    console.log(`[ki-hit] ${c.name} -> ${target.name} (vida ${target.health})`);
+    spawnProjectile(c);
 
   } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
     const now = Date.now();
+    if (now < c.stunUntil) return;
     const direction = payload.readInt8(1) < 0 ? -1 : 1;
     if (c.ki < 5 || now - c.lastDashAt < DASH_COOLDOWN_MS) return;
     c.lastDashAt = now;
     c.ki -= 5;
-    c.x = Math.max(20, Math.min(1980, c.x + direction * DASH_DISTANCE));
+    c.x = Math.max(PLAYER_MIN_X, Math.min(PLAYER_MAX_X, c.x + direction * DASH_DISTANCE));
     c.lastMovementAt = now;
-    broadcastStats(c, socket);
+    broadcastStats(c);
     broadcastExcept(new Writer().u8(MSG_DASH_STATE).u16(c.uid).u16(c.x).u16(c.y).s8(direction), socket);
     broadcastPosition(c);
 
@@ -405,8 +513,10 @@ function countPlayers() {
 function newClientRecord() {
   return {
     uid: 0,
+    accountId: null,
     name: null,
     inbuf: Buffer.alloc(0),
+    connectedAt: Date.now(),
     lastMovementAt: Date.now(),
     afk: false,
     kicking: false,
@@ -414,13 +524,18 @@ function newClientRecord() {
     y: 2000,
     facing: 1,
     lastAttackAt: 0,
+    lastCombatAction: 0,
     health: 100,
+    stateRevision: 1,
     ki: 0,
     kiCharging: false,
     lastKiFireAt: 0,
-    lastKiHitAt: 0,
     lastDashAt: 0,
-    lastInputSeq: 0
+    stunUntil: 0,
+    lastInputSeq: 0,
+    lastInputAt: 0,
+    inputDx: 0,
+    inputDy: 0
   };
 }
 
@@ -447,6 +562,9 @@ function disconnect(conn) {
   const c = clients.get(conn);
   if (!c) return;
   clients.delete(conn);
+  for (const projectile of [...projectiles.values()]) {
+    if (projectile.owner === c) destroyProjectile(projectile, false);
+  }
   if (c.name !== null) {
     console.log(`[-] ${c.name} se desconectó — ${countPlayers()} en línea`);
     broadcast(playerListWriter());
@@ -501,11 +619,43 @@ wss.on('listening', () => {
   console.log(`Servidor WebSocket escuchando en 127.0.0.1:${WS_PORT}`);
 });
 
+// Movimiento autoritativo por tiempo: la velocidad ya no depende de cuántos
+// paquetes mande el cliente ni de su FPS. Los snapshots completos salen a 20 Hz.
+let lastMovementTick = Date.now();
+setInterval(() => {
+  const now = Date.now();
+  const elapsedSeconds = Math.min(0.05, Math.max(0, now - lastMovementTick) / 1000);
+  lastMovementTick = now;
+  for (const c of clients.values()) {
+    if (c.name === null || now < c.stunUntil) continue;
+    if (now - c.lastInputAt > 750) {
+      c.inputDx = 0;
+      c.inputDy = 0;
+    }
+    const length = Math.hypot(c.inputDx, c.inputDy);
+    if (length <= 0) continue;
+    const distance = MOVEMENT_SPEED_PER_SECOND * elapsedSeconds;
+    const oldX = c.x;
+    const oldY = c.y;
+    c.x = Math.max(PLAYER_MIN_X, Math.min(PLAYER_MAX_X, c.x + c.inputDx / length * distance));
+    c.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, c.y + c.inputDy / length * distance));
+    if (c.x !== oldX || c.y !== oldY) c.lastMovementAt = now;
+  }
+}, 1000 / 60);
+
+setInterval(() => {
+  if (countPlayers() > 0) broadcast(worldSnapshotWriter());
+}, 50);
+
 // El servidor es la autoridad del AFK: 60 s para marcar y 20 s más para expulsar.
 setInterval(() => {
   const now = Date.now();
   for (const [socket, c] of clients) {
-    if (c.name === null || c.kicking || socket.destroyed) continue;
+    if (c.name === null) {
+      if (now - c.connectedAt >= 15_000) socket.end();
+      continue;
+    }
+    if (c.kicking || socket.destroyed) continue;
     const idleFor = now - c.lastMovementAt;
 
     if (!c.afk && idleFor >= AFK_AFTER_MS) {
@@ -525,6 +675,30 @@ setInterval(() => {
   }
 }, 1000);
 
+// Proyectiles de ki autoritativos a 60 ticks/s. El cliente sólo los dibuja.
+setInterval(() => {
+  for (const projectile of [...projectiles.values()]) {
+    projectile.x += projectile.vx;
+    projectile.life -= 1;
+    let hitTarget = null;
+    let bestDistance = Infinity;
+    for (const target of clients.values()) {
+      if (target.name === null || target.uid === projectile.owner.uid) continue;
+      const distance = Math.hypot(target.x - projectile.x, (target.y - 40) - projectile.y);
+      if (distance <= 28 && distance < bestDistance) {
+        hitTarget = target;
+        bestDistance = distance;
+      }
+    }
+    if (hitTarget) {
+      commitCombatEvent(projectile.owner, hitTarget, 1, 3, 0);
+      destroyProjectile(projectile, true);
+    } else if (projectile.life <= 0 || projectile.x < -32 || projectile.x > WORLD_WIDTH + 32) {
+      destroyProjectile(projectile, false);
+    }
+  }
+}, 1000 / 60);
+
 // Recarga de ki autoritativa: aproximadamente un punto por frame (60/s).
 setInterval(() => {
   for (const [socket, c] of clients) {
@@ -534,19 +708,159 @@ setInterval(() => {
   }
 }, 1000 / 60);
 
-// ---------- página de estado (detrás de nginx en prueba.minecruz.com) ----------
+// ---------- REST de autenticación, lista de servidores y estado ----------
 
 const started = Date.now();
+const allowedOrigins = new Set((process.env.CORS_ORIGINS
+  || 'https://jugar.minecruz.com,http://localhost,http://127.0.0.1')
+  .split(',').map(value => value.trim()).filter(Boolean));
+const authRateLimits = new Map();
 
-http.createServer((req, res) => {
+function isAllowedOrigin(origin) {
+  return allowedOrigins.has(origin)
+    || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(String(origin));
+}
+
+function requestAddress(req) {
+  const forwarded = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'];
+  return String(Array.isArray(forwarded) ? forwarded[0] : forwarded || req.socket.remoteAddress || '')
+    .split(',')[0].trim();
+}
+
+function applyApiHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
+function sendJson(req, res, status, body) {
+  applyApiHeaders(req, res);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
+}
+
+async function readJsonBody(req) {
+  if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+    throw new AuthError('UNSUPPORTED_MEDIA_TYPE', 'Se requiere Content-Type application/json.', 415);
+  }
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 8192) throw new AuthError('BODY_TOO_LARGE', 'La solicitud es demasiado grande.', 413);
+    chunks.push(chunk);
+  }
+  if (chunks.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new AuthError('INVALID_JSON', 'El cuerpo JSON no es válido.', 400);
+  }
+}
+
+function allowAuthAttempt(req) {
+  const now = Date.now();
+  const key = requestAddress(req);
+  let bucket = authRateLimits.get(key);
+  if (!bucket || bucket.resetAt <= now) bucket = { count: 0, resetAt: now + 10 * 60_000 };
+  bucket.count += 1;
+  authRateLimits.set(key, bucket);
+  return bucket.count <= 20;
+}
+
+function bearerToken(req) {
+  const match = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization || ''));
+  if (!match) throw new AuthError('AUTH_REQUIRED', 'Debes iniciar sesión.', 401);
+  return match[1];
+}
+
+async function handleHttp(req, res) {
+  const url = new URL(req.url, 'http://127.0.0.1');
   const names = [...clients.values()].filter(c => c.name !== null).map(c => c.name);
-  if (req.url === '/status.json') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ online: true, jugadores: names.length, nombres: names, desde: new Date(started).toISOString() }));
+
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    if (origin && !isAllowedOrigin(origin)) {
+      sendJson(req, res, 403, { ok: false, error: 'Origen no permitido.' });
+      return;
+    }
+    applyApiHeaders(req, res);
+    res.writeHead(204);
+    res.end();
     return;
   }
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><html lang="es"><meta charset="utf-8">
+
+  if (url.pathname.startsWith('/api/') && req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
+    sendJson(req, res, 403, { ok: false, error: 'Origen no permitido.' });
+    return;
+  }
+
+  try {
+    if (url.pathname === '/api/auth/register' && req.method === 'POST') {
+      if (!allowAuthAttempt(req)) throw new AuthError('RATE_LIMIT', 'Demasiados intentos. Espera unos minutos.', 429);
+      await authReady;
+      const body = await readJsonBody(req);
+      await authStore.register({ username: body.username, password: body.password });
+      const session = await authStore.login({ username: body.username, password: body.password });
+      sendJson(req, res, 201, { ok: true, token: session.token, expiresAt: session.expiresAt, user: session.user });
+      return;
+    }
+
+    if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+      if (!allowAuthAttempt(req)) throw new AuthError('RATE_LIMIT', 'Demasiados intentos. Espera unos minutos.', 429);
+      await authReady;
+      const body = await readJsonBody(req);
+      const session = await authStore.login({ username: body.username, password: body.password });
+      sendJson(req, res, 200, { ok: true, token: session.token, expiresAt: session.expiresAt, user: session.user });
+      return;
+    }
+
+    if (url.pathname === '/api/servers' && req.method === 'GET') {
+      sendJson(req, res, 200, {
+        ok: true,
+        servers: [{
+          id: 'principal', name: 'Servidor principal', online: true,
+          players: names.length, tcpHost: 'prueba.minecruz.com', tcpPort: PORT,
+          wsUrl: 'wss://jugar.minecruz.com/ws/', wsPort: 443
+        }]
+      });
+      return;
+    }
+
+    if (url.pathname === '/api/game-ticket' && req.method === 'POST') {
+      await authReady;
+      const session = await authStore.verifySession(bearerToken(req));
+      const body = await readJsonBody(req);
+      if (body.serverId !== 'principal') throw new AuthError('SERVER_NOT_FOUND', 'Servidor no encontrado.', 404);
+      sendJson(req, res, 201, {
+        ok: true,
+        ticket: issueGameTicket(session),
+        expiresIn: Math.floor(GAME_TICKET_TTL_MS / 1000)
+      });
+      return;
+    }
+
+    if (url.pathname === '/status.json' && req.method === 'GET') {
+      sendJson(req, res, 200, {
+        online: true, jugadores: names.length, nombres: names,
+        desde: new Date(started).toISOString()
+      });
+      return;
+    }
+
+    if (url.pathname !== '/' || req.method !== 'GET') {
+      sendJson(req, res, 404, { ok: false, error: 'Ruta no encontrada.' });
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(`<!doctype html><html lang="es"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Servidor del juego</title>
 <style>body{font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0}
@@ -554,10 +868,39 @@ main{text-align:center}h1{color:#6f6}code{background:#222;padding:2px 8px;border
 <main><h1>&#9679; Servidor en línea</h1>
 <p>Jugadores conectados: <strong>${names.length}</strong></p>
 <p>${names.map(n => `<code>${String(n).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</code>`).join(' ') || '(nadie todavía)'}</p>
-<p>Conéctate desde el juego a <code>prueba.minecruz.com:${PORT}</code></p></main></html>`);
+<p>API REST y servidor de juego activos.</p></main></html>`);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      sendJson(req, res, error.status, { ok: false, code: error.code, error: error.message });
+      return;
+    }
+    console.error('[http]', error);
+    sendJson(req, res, 500, { ok: false, error: 'Error interno del servidor.' });
+  }
+}
+
+http.createServer((req, res) => {
+  handleHttp(req, res).catch(error => {
+    console.error('[http fatal]', error);
+    if (!res.headersSent) sendJson(req, res, 500, { ok: false, error: 'Error interno del servidor.' });
+    else res.destroy();
+  });
 }).listen(HTTP_PORT, '127.0.0.1', () => {
-  console.log(`Página de estado en http://127.0.0.1:${HTTP_PORT}`);
+  console.log(`REST/estado en http://127.0.0.1:${HTTP_PORT}`);
 });
+
+authReady.then(() => {
+  console.log(`Base documental de usuarios lista: ${AUTH_DB_PATH}`);
+}).catch(error => {
+  console.error('No se pudo abrir la base de autenticación:', error);
+  process.exit(1);
+});
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ticket] of gameTickets) if (ticket.expiresAt <= now) gameTickets.delete(key);
+  for (const [key, bucket] of authRateLimits) if (bucket.resetAt <= now) authRateLimits.delete(key);
+}, 30_000);
 
 // ---------- consola del operador (stdin) ----------
 // El operador escribe comandos en la terminal donde corre el servidor.

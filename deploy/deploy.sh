@@ -14,6 +14,12 @@ if ! command -v node >/dev/null; then
     sudo apt-get update && sudo apt-get install -y nodejs npm
 fi
 
+NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+if [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "Se requiere Node.js 18 o posterior (instalado: $(node --version))." >&2
+    exit 1
+fi
+
 # 2. Clonar o actualizar el repo
 if [ -d "$DIR" ]; then
     cd "$DIR" && git pull
@@ -22,17 +28,23 @@ else
     cd "$DIR"
 fi
 
-# 3. Registrar el servicio systemd (solo la primera vez o si cambió)
+# 3. Dependencias y directorio privado de la base documental
+cd "$DIR/server"
+npm ci --omit=dev
+install -d -m 700 "$DIR/server/data"
+cd "$DIR"
+
+# 4. Registrar el servicio systemd (solo la primera vez o si cambió)
 sudo cp deploy/gamemaker-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable gamemaker-server
 
-# 4. Abrir el puerto en el firewall (si ufw está activo)
+# 5. Abrir el puerto en el firewall (si ufw está activo)
 if command -v ufw >/dev/null; then
     sudo ufw allow 6510/tcp || true
 fi
 
-# 5. (Re)iniciar
+# 6. (Re)iniciar
 sudo systemctl restart gamemaker-server
 sleep 1
 sudo systemctl status gamemaker-server --no-pager

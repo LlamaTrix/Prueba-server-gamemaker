@@ -8,6 +8,7 @@
 // El navegador no permite TCP raw; GameMaker usa network_socket_wss.
 #macro SERVER_WS_URL  "wss://jugar.minecruz.com/ws/"
 #macro SERVER_WS_PORT 443
+#macro AUTH_API_BASE  "https://jugar.minecruz.com/api"
 
 #macro MSG_JOIN        1
 #macro MSG_WELCOME     2
@@ -16,11 +17,9 @@
 #macro MSG_ACTIVITY    5
 #macro MSG_KICK        6
 #macro MSG_LEAVE       7
-#macro MSG_WORLD       8
 #macro MSG_POS         9
 #macro MSG_BUBBLE      10
 #macro MSG_ATTACK      11
-#macro MSG_HIT         12
 #macro MSG_ATTACK_STATE 13
 #macro MSG_STATS        14
 #macro MSG_KI_CHARGE    15
@@ -28,14 +27,17 @@
 #macro MSG_KI_STATE     17
 #macro MSG_DASH         18
 #macro MSG_DASH_STATE   19
-#macro MSG_KI_HIT       20
 #macro MSG_INPUT        21
-#macro MSG_SNAPSHOT     22
 #macro MSG_PING         23
 #macro MSG_PONG         24
 #macro MSG_NAME_REJECT  25
 #macro MSG_SERVER_QUERY 26
 #macro MSG_SERVER_INFO  27
+#macro MSG_COMBAT_EVENT 28
+#macro MSG_PROJECTILE_SPAWN 29
+#macro MSG_PROJECTILE_DESTROY 30
+#macro MSG_WORLD_STATE 31
+#macro MSG_WORLD_SNAPSHOT 32
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -63,6 +65,14 @@ function net_close(_state) {
 function net_connect(_state) {
     net_close(_state);
     _state.player_states = {};
+    _state.uid = -1;
+    _state.input_sequence = 0;
+    _state.action_sequence = 0;
+    _state.pending_inputs = [];
+    _state.last_combat_event = 0;
+    _state.last_sent_dx = 0;
+    _state.last_sent_dy = 0;
+    _state.last_input_sent_at = 0;
     _state.kicked = false;
     _state.last_activity_sent = current_time;
     _state.error = "";
@@ -83,8 +93,8 @@ function net_connect(_state) {
         return false;
     }
 
-    var _host = _is_browser ? SERVER_WS_URL : SERVER_HOST;
-    var _port = _is_browser ? SERVER_WS_PORT : SERVER_PORT;
+    var _host = _is_browser ? _state.ws_url : _state.tcp_host;
+    var _port = _is_browser ? _state.ws_port : _state.tcp_port;
     var _result = network_connect_raw_async(_state.socket, _host, _port);
     if (_result < 0) {
         net_close(_state);
@@ -95,6 +105,11 @@ function net_connect(_state) {
 
     show_debug_message("[red] conectando socket " + string(_state.socket) + " a " + string(_host) + ":" + string(_port));
     return true;
+}
+
+/// El socket recibe solamente un ticket efímero; nunca usuario ni contraseña.
+function net_send_join(_state, _ticket) {
+    return net_send_string(_state, MSG_JOIN, _ticket);
 }
 
 /// Envía un payload ya construido. Devuelve false cuando falla el envío.
@@ -145,11 +160,13 @@ function net_send_position(_state, _x, _y, _facing) {
 }
 
 function net_send_attack(_state, _kind, _charge_level, _combo_stage) {
-    var _payload = buffer_create(4, buffer_fixed, 1);
+    _state.action_sequence += 1;
+    var _payload = buffer_create(8, buffer_fixed, 1);
     buffer_write(_payload, buffer_u8, MSG_ATTACK);
     buffer_write(_payload, buffer_u8, _kind);
     buffer_write(_payload, buffer_u8, clamp(_charge_level, 0, 3));
     buffer_write(_payload, buffer_u8, clamp(_combo_stage, 0, 3));
+    buffer_write(_payload, buffer_u32, _state.action_sequence);
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;
@@ -182,16 +199,7 @@ function net_send_dash(_state, _direction) {
     return _ok;
 }
 
-/// Reporta que nuestra onda de ki impactó a un jugador. El servidor valida y aplica daño.
-function net_send_ki_hit(_state, _target_uid) {
-    var _payload = buffer_create(3, buffer_fixed, 1);
-    buffer_write(_payload, buffer_u8, MSG_KI_HIT);
-    buffer_write(_payload, buffer_u16, _target_uid);
-    var _ok = net_send_payload(_state, _payload);
-    buffer_delete(_payload);
-    return _ok;
-}
-
+/// Envía una entrada de movimiento numerada para reconciliación autoritativa.
 function net_send_input(_state, _sequence, _dx, _dy, _facing) {
     var _payload = buffer_create(8, buffer_fixed, 1);
     buffer_write(_payload, buffer_u8, MSG_INPUT);
@@ -221,14 +229,41 @@ function net_find_remote(_uid) {
     return noone;
 }
 
-function net_cache_stats(_state, _uid, _health, _ki) {
-    var _key = "uid_" + string(_uid);
-    var _old_ki = 0;
-    if (variable_struct_exists(_state.player_states, _key)) {
-        _old_ki = variable_struct_get(_state.player_states, _key).ki;
+function net_find_fighter(_state, _uid) {
+    if (_uid == _state.uid && instance_number(obj_player) > 0) return instance_find(obj_player, 0);
+    return net_find_remote(_uid);
+}
+
+function net_find_projectile(_projectile_id) {
+    for (var _bi = 0; _bi < instance_number(obj_ki_blast); _bi++) {
+        var _blast = instance_find(obj_ki_blast, _bi);
+        if (_blast.projectile_id == _projectile_id) return _blast;
     }
-    if (_ki < 0) _ki = _old_ki;
-    variable_struct_set(_state.player_states, _key, { health: _health, ki: _ki });
+    return noone;
+}
+
+/// Actualiza únicamente ki. Este mensaje jamás puede restaurar la vida.
+function net_cache_ki(_state, _uid, _ki) {
+    var _key = "uid_" + string(_uid);
+    var _old_health = 100;
+    var _old_revision = 0;
+    if (variable_struct_exists(_state.player_states, _key)) {
+        var _old_state = variable_struct_get(_state.player_states, _key);
+        _old_health = _old_state.health;
+        _old_revision = _old_state.revision;
+    }
+    variable_struct_set(_state.player_states, _key,
+        { health: _old_health, ki: _ki, revision: _old_revision });
+}
+
+function net_cache_authoritative_state(_state, _uid, _health, _ki, _revision) {
+    var _key = "uid_" + string(_uid);
+    if (variable_struct_exists(_state.player_states, _key)) {
+        var _old = variable_struct_get(_state.player_states, _key);
+        if (_revision < _old.revision) return false;
+    }
+    variable_struct_set(_state.player_states, _key, { health: _health, ki: _ki, revision: _revision });
+    return true;
 }
 
 function net_apply_cached_stats(_state, _uid, _fighter) {
@@ -300,7 +335,7 @@ function net_read_payload(_state, _payload) {
             show_debug_message("[red] sesión aceptada; uid=" + string(_state.uid));
             break;
 
-        case MSG_WORLD:
+        case MSG_WORLD_STATE:
             // Reconciliar por UID: nunca recrear un remoto que ya existe, porque
             // fighter_init() restablecería su vida y ki.
             with (obj_remote) world_seen = false;
@@ -311,6 +346,10 @@ function net_read_payload(_state, _payload) {
                 var _x = buffer_read(_payload, buffer_u16);
                 var _y = buffer_read(_payload, buffer_u16);
                 var _facing = buffer_read(_payload, buffer_s8);
+                var _world_health = buffer_read(_payload, buffer_u8);
+                var _world_ki = buffer_read(_payload, buffer_u8);
+                var _world_revision = buffer_read(_payload, buffer_u32);
+                net_cache_authoritative_state(_state, _uid, _world_health, _world_ki, _world_revision);
                 if (_uid != _state.uid) {
                     var _remote = net_find_remote(_uid);
                     if (_remote == noone) {
@@ -323,6 +362,9 @@ function net_read_payload(_state, _payload) {
                     _remote.facing = _facing;
                     _remote.world_seen = true;
                     net_apply_cached_stats(_state, _uid, _remote);
+                } else if (instance_number(obj_player) > 0) {
+                    var _world_local = instance_find(obj_player, 0);
+                    net_apply_cached_stats(_state, _uid, _world_local);
                 }
             }
             with (obj_remote) {
@@ -351,47 +393,77 @@ function net_read_payload(_state, _payload) {
             net_set_bubble(_bubble_uid, _bubble_text);
             break;
 
-        case MSG_HIT:
-            var _hit_uid = buffer_read(_payload, buffer_u16);
-            var _hit_kind = buffer_read(_payload, buffer_u8);
-            var _hit_direction = buffer_read(_payload, buffer_s8);
-            var _hit_charge = buffer_read(_payload, buffer_u8);
-            // El protocolo web incluye la vida resultante en la misma trama del
-            // impacto. Con servidores antiguos se calcula localmente como respaldo.
-            var _hit_has_health = buffer_get_size(_payload) >= 7;
-            var _hit_health = -1;
-            if (_hit_has_health) _hit_health = buffer_read(_payload, buffer_u8);
-            var _hit_has_position = buffer_get_size(_payload) >= 11;
-            var _hit_x = -1;
-            var _hit_y = -1;
-            if (_hit_has_position) {
-                _hit_x = buffer_read(_payload, buffer_u16);
-                _hit_y = buffer_read(_payload, buffer_u16);
-            }
-            var _hit_target = noone;
-            if (_hit_uid == _state.uid && instance_number(obj_player) > 0) {
-                _hit_target = instance_find(obj_player, 0);
-                // A quien recibe el golpe se le sacude la cámara.
-                with (obj_camera) {
-                    shake_time = 12;
-                    shake_time_max = 12;
-                    shake_mag = (_hit_kind == ATTACK_NORMAL) ? 7 : 14;
+        case MSG_COMBAT_EVENT:
+            // Único evento que modifica vida por combate. Su tamaño exacto evita
+            // interpretar versiones antiguas o tramas parciales.
+            if (buffer_get_size(_payload) != 27) break;
+            var _combat_event = buffer_read(_payload, buffer_u32);
+            var _combat_attacker_uid = buffer_read(_payload, buffer_u16);
+            var _combat_target_uid = buffer_read(_payload, buffer_u16);
+            var _combat_revision = buffer_read(_payload, buffer_u32);
+            var _combat_kind = buffer_read(_payload, buffer_u8);
+            var _combat_damage = buffer_read(_payload, buffer_u8);
+            var _combat_health = buffer_read(_payload, buffer_u8);
+            var _combat_ki = buffer_read(_payload, buffer_u8);
+            var _combat_facing = buffer_read(_payload, buffer_s8);
+            var _combat_charge = buffer_read(_payload, buffer_u8);
+            var _combat_push_x = buffer_read(_payload, buffer_s16);
+            var _combat_push_y = buffer_read(_payload, buffer_s16);
+            var _combat_x = buffer_read(_payload, buffer_u16);
+            var _combat_y = buffer_read(_payload, buffer_u16);
+
+            if (_combat_event <= _state.last_combat_event) break;
+            _state.last_combat_event = _combat_event;
+            if (!net_cache_authoritative_state(_state, _combat_target_uid,
+                _combat_health, _combat_ki, _combat_revision)) break;
+
+            var _combat_target = net_find_fighter(_state, _combat_target_uid);
+            if (_combat_target != noone) {
+                _combat_target.health = _combat_health;
+                _combat_target.ki = _combat_ki;
+                if (_combat_target_uid == _state.uid) {
+                    _state.pending_inputs = [];
+                    _state.last_sent_dx = 0;
+                    _state.last_sent_dy = 0;
+                    _combat_target.net_correction_x = 0;
+                    _combat_target.net_correction_y = 0;
+                    with (obj_camera) {
+                        shake_time = 12;
+                        shake_time_max = 12;
+                        shake_mag = (_combat_kind == ATTACK_NORMAL) ? 7 : 14;
+                    }
                 }
-            } else {
-                _hit_target = net_find_remote(_hit_uid);
-            }
-            if (_hit_target != noone) {
-                if (_hit_has_health) {
-                    _hit_target.health = _hit_health;
-                } else {
-                    var _hit_damage = 3;
-                    if (_hit_kind != ATTACK_NORMAL) _hit_damage = 5 + _hit_charge;
-                    _hit_target.health = max(0, _hit_target.health - _hit_damage);
+                if (_combat_kind != ATTACK_NORMAL) {
+                    fighter_spawn_explosion(_combat_target.x, _combat_target.y - 40);
                 }
-                if (_hit_kind != ATTACK_NORMAL) fighter_spawn_explosion(_hit_target.x, _hit_target.y - 40);
-                fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge, _hit_x, _hit_y);
+                fighter_receive_hit(_combat_target, _combat_kind, _combat_facing,
+                    _combat_charge, _combat_x, _combat_y);
             }
-            if (_hit_has_health) net_cache_stats(_state, _hit_uid, _hit_health, -1);
+            break;
+
+        case MSG_PROJECTILE_SPAWN:
+            var _projectile_id = buffer_read(_payload, buffer_u32);
+            var _projectile_owner = buffer_read(_payload, buffer_u16);
+            var _projectile_x = buffer_read(_payload, buffer_u16);
+            var _projectile_y = buffer_read(_payload, buffer_u16);
+            var _projectile_direction = buffer_read(_payload, buffer_s8);
+            if (net_find_projectile(_projectile_id) == noone) {
+                var _projectile = instance_create_layer(_projectile_x, _projectile_y, "Instances", obj_ki_blast);
+                _projectile.projectile_id = _projectile_id;
+                _projectile.owner_uid = _projectile_owner;
+                _projectile.travel_direction = _projectile_direction;
+                _projectile.image_xscale = 2 * _projectile_direction;
+            }
+            break;
+
+        case MSG_PROJECTILE_DESTROY:
+            var _destroy_id = buffer_read(_payload, buffer_u32);
+            var _destroy_x = buffer_read(_payload, buffer_u16);
+            var _destroy_y = buffer_read(_payload, buffer_u16);
+            var _destroy_hit = buffer_read(_payload, buffer_u8);
+            var _destroy_projectile = net_find_projectile(_destroy_id);
+            if (_destroy_hit != 0) fighter_spawn_explosion(_destroy_x, _destroy_y);
+            if (_destroy_projectile != noone) with (_destroy_projectile) instance_destroy();
             break;
 
         case MSG_ATTACK_STATE:
@@ -424,9 +496,9 @@ function net_read_payload(_state, _payload) {
 
         case MSG_STATS:
             var _stats_uid = buffer_read(_payload, buffer_u16);
-            var _stats_health = buffer_read(_payload, buffer_u8);
+            buffer_read(_payload, buffer_u8); // campo reservado del protocolo anterior
             var _stats_ki = buffer_read(_payload, buffer_u8);
-            net_cache_stats(_state, _stats_uid, _stats_health, _stats_ki);
+            net_cache_ki(_state, _stats_uid, _stats_ki);
             var _stats_target = noone;
             if (_stats_uid == _state.uid && instance_number(obj_player) > 0) {
                 _stats_target = instance_find(obj_player, 0);
@@ -434,7 +506,6 @@ function net_read_payload(_state, _payload) {
                 _stats_target = net_find_remote(_stats_uid);
             }
             if (_stats_target != noone) {
-                _stats_target.health = _stats_health;
                 _stats_target.ki = _stats_ki;
             }
             break;
@@ -451,7 +522,6 @@ function net_read_payload(_state, _payload) {
                         _ki_remote.ki_forward = _ki_state == 3;
                         _ki_remote.ki_cast_timer = (_ki_state == 3) ? 10 : 20;
                         _ki_remote.ki_blast_image = 1;
-                        fighter_spawn_ki_blast(_ki_remote);
                     }
                 }
             }
@@ -475,37 +545,37 @@ function net_read_payload(_state, _payload) {
             }
             break;
 
-        case MSG_SNAPSHOT:
-            var _snap_uid = buffer_read(_payload, buffer_u16);
-            var _snap_sequence = buffer_read(_payload, buffer_u32);
-            var _snap_x = buffer_read(_payload, buffer_u16);
-            var _snap_y = buffer_read(_payload, buffer_u16);
-            var _snap_facing = buffer_read(_payload, buffer_s8);
-            if (_snap_uid == _state.uid && instance_number(obj_player) > 0) {
-                var _snap_player = instance_find(obj_player, 0);
-                var _replay_x = _snap_x;
-                var _replay_y = _snap_y;
-                var _pending_new = [];
-                for (var _pi = 0; _pi < array_length(_state.pending_inputs); _pi++) {
-                    var _input = _state.pending_inputs[_pi];
-                    if (_input.sequence > _snap_sequence) {
-                        var _input_len = point_distance(0, 0, _input.dx, _input.dy);
-                        if (_input_len > 0) {
-                            _replay_x += _input.dx / _input_len * _snap_player.move_speed;
-                            _replay_y += _input.dy / _input_len * _snap_player.move_speed;
+        case MSG_WORLD_SNAPSHOT:
+            var _snapshot_count = buffer_read(_payload, buffer_u16);
+            if (buffer_get_size(_payload) != 3 + _snapshot_count * 11) break;
+            for (var _si = 0; _si < _snapshot_count; _si++) {
+                var _snap_uid = buffer_read(_payload, buffer_u16);
+                buffer_read(_payload, buffer_u32); // secuencia confirmada
+                var _snap_x = buffer_read(_payload, buffer_u16);
+                var _snap_y = buffer_read(_payload, buffer_u16);
+                var _snap_facing = buffer_read(_payload, buffer_s8);
+                if (_snap_uid == _state.uid && instance_number(obj_player) > 0) {
+                    var _snap_player = instance_find(obj_player, 0);
+                    if (_snap_player.stun_frames <= 0) {
+                        var _error_x = _snap_x - _snap_player.x;
+                        var _error_y = _snap_y - _snap_player.y;
+                        if (point_distance(0, 0, _error_x, _error_y) > 120) {
+                            _snap_player.x = _snap_x;
+                            _snap_player.y = _snap_y;
+                            _snap_player.net_correction_x = 0;
+                            _snap_player.net_correction_y = 0;
+                        } else {
+                            _snap_player.net_correction_x = _error_x;
+                            _snap_player.net_correction_y = _error_y;
                         }
-                        array_push(_pending_new, _input);
                     }
-                }
-                _state.pending_inputs = _pending_new;
-                _snap_player.net_correction_x = _replay_x - _snap_player.x;
-                _snap_player.net_correction_y = _replay_y - _snap_player.y;
-            } else {
-                var _snap_remote = net_find_remote(_snap_uid);
-                if (_snap_remote != noone) {
-                    _snap_remote.target_x = _snap_x;
-                    _snap_remote.target_y = _snap_y;
-                    _snap_remote.facing = _snap_facing;
+                } else {
+                    var _snap_remote = net_find_remote(_snap_uid);
+                    if (_snap_remote != noone) {
+                        _snap_remote.target_x = _snap_x;
+                        _snap_remote.target_y = _snap_y;
+                        _snap_remote.facing = _snap_facing;
+                    }
                 }
             }
             break;

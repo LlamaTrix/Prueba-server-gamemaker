@@ -9,10 +9,14 @@ switch (_type) {
         if (async_load[? "succeeded"] == 1) {
             net.tcp_connected = true;
             net.status = "joining";
-            if (!net_send_string(net, MSG_JOIN, username)) {
+            if (!net_send_join(net, game_ticket)) {
                 net.error = "Se conectó, pero no se pudo enviar el ingreso";
                 net.status = "error";
                 net_close(net);
+            } else {
+                // Es de un solo uso; se borra apenas queda dentro del socket.
+                game_ticket = "";
+                if (variable_global_exists("game_ticket")) global.game_ticket = "";
             }
         } else {
             net_close(net);

@@ -6,9 +6,10 @@ if ((net.status == "connecting" || net.status == "joining")
 }
 
 if (net.status == "error" && keyboard_check_pressed(ord("R"))) {
-    net.uid = -1;
-    net.players = [];
-    net_connect(net);
+    global.gameplay_ready = false;
+    if (instance_number(obj_menu) == 0) instance_create_depth(0, 0, -100000, obj_menu);
+    instance_destroy();
+    exit;
 }
 
 if (!net.session_ready) exit;
