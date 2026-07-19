@@ -1,4 +1,12 @@
 var _chat_blocked = false;
+net_input_dx = 0;
+net_input_dy = 0;
+if (abs(net_correction_x) > 0.01 || abs(net_correction_y) > 0.01) {
+    var _correct_x = net_correction_x * 0.25;
+    var _correct_y = net_correction_y * 0.25;
+    x += _correct_x; y += _correct_y;
+    net_correction_x -= _correct_x; net_correction_y -= _correct_y;
+}
 if (instance_number(obj_client) > 0) {
     var _client_instance = instance_find(obj_client, 0);
     _chat_blocked = _client_instance.chat_open;
@@ -67,7 +75,6 @@ if (!_chat_blocked && stun_frames <= 0) {
             // Primero fija la posición de salida en el servidor; TCP conserva este orden.
             with (obj_client) {
                 if (net.session_ready) {
-                    net_send_position(net, other.x, other.y, other.facing);
                     net_send_dash(net, other.dash_direction);
                 }
             }
@@ -85,8 +92,10 @@ if (!_chat_blocked && stun_frames <= 0) {
         || turn_frames > 0 || _did_dash;
 
     if (!_busy) {
-        hsp = keyboard_check(vk_right) - keyboard_check(vk_left);
-        vsp = keyboard_check(vk_down) - keyboard_check(vk_up);
+        net_input_dx = keyboard_check(vk_right) - keyboard_check(vk_left);
+        net_input_dy = keyboard_check(vk_down) - keyboard_check(vk_up);
+        hsp = net_input_dx;
+        vsp = net_input_dy;
         if (hsp != 0 || vsp != 0) {
             var _len = point_distance(0, 0, hsp, vsp);
             hsp = hsp / _len * move_speed; vsp = vsp / _len * move_speed;
@@ -175,16 +184,16 @@ if (!_chat_blocked && stun_frames <= 0) {
 
 event_inherited();
 
-// Sincronizar posición y dirección aproximadamente 12 veces por segundo.
+// Enviar comandos numerados; el servidor responde con snapshots autoritativos.
 with (obj_client) {
-    if (net.session_ready && current_time - net.last_position_sent >= 80
-        && (abs(other.x - net.last_sent_x) >= 0.5
-            || abs(other.y - net.last_sent_y) >= 0.5
+    if (net.session_ready && other.stun_frames <= 0
+        && (other.net_input_dx != 0 || other.net_input_dy != 0
             || other.facing != net.last_sent_facing)) {
-        net_send_position(net, other.x, other.y, other.facing);
-        net.last_position_sent = current_time;
-        net.last_sent_x = other.x;
-        net.last_sent_y = other.y;
+        net.input_sequence += 1;
+        var _command = { sequence: net.input_sequence, dx: other.net_input_dx, dy: other.net_input_dy };
+        array_push(net.pending_inputs, _command);
+        if (array_length(net.pending_inputs) > 180) array_delete(net.pending_inputs, 0, 1);
+        net_send_input(net, net.input_sequence, other.net_input_dx, other.net_input_dy, other.facing);
         net.last_sent_facing = other.facing;
     }
 }

@@ -45,6 +45,11 @@ strings = UTF-8 terminados en NUL (formato buffer_string de GameMaker)
 | 17 | `MSG_KI_STATE` | servidor → clientes | animación de carga/disparo |
 | 18 | `MSG_DASH` | cliente → servidor | solicitud de dash lateral (`s8` dirección) |
 | 19 | `MSG_DASH_STATE` | servidor → clientes | posición y animación autoritativas del dash |
+| 20 | `MSG_KI_HIT` | cliente → servidor | candidato de impacto; el servidor lo valida |
+| 21 | `MSG_INPUT` | cliente → servidor | secuencia y dirección del comando de movimiento |
+| 22 | `MSG_SNAPSHOT` | servidor → clientes | secuencia confirmada, posición y dirección |
+| 23/24 | `MSG_PING/PONG` | ambos | medición RTT dentro de la conexión de juego |
+| 25 | `MSG_NAME_REJECT` | servidor → cliente | nombre vacío o repetido |
 
 El servidor marca al jugador como `[AFK]` tras 60 segundos sin movimiento. Si
 no vuelve a moverse durante los 20 segundos siguientes, lo expulsa y cierra su

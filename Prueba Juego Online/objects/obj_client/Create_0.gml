@@ -1,7 +1,6 @@
-username = "";
+username = variable_global_exists("pending_username") ? global.pending_username : "";
 chat_input = "";
 chat_open = false;
-name_prompt = -1;
 
 // La interfaz usa una superficie lógica fija de 400 x 400.
 display_set_gui_size(400, 400);
@@ -26,8 +25,13 @@ net = {
     last_position_sent: 0,
     last_sent_x: -1,
     last_sent_y: -1,
-    last_sent_facing: 0
+    last_sent_facing: 0,
+    input_sequence: 0,
+    pending_inputs: [],
+    ping_ms: -1,
+    ping_nonce: 0,
+    ping_sent_at: 0,
+    last_ping_at: 0
 };
 
-show_debug_message("[cliente] solicitando nombre...");
-name_prompt = get_string_async("Escribe tu nombre de usuario:", "Jugador");
+if (username != "") net_connect(net);

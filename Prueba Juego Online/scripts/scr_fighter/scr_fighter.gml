@@ -45,13 +45,14 @@ function fighter_init(_f) {
     _f.combo_input_after = 10;
     _f.strong_duration = 30;
     _f.strong_charge_max = 60;
-    _f.strong_charge_step = 10;
-    _f.strong_base_push = 8;
-    _f.strong_charge_push_bonus = 2;
+    _f.strong_charge_step = 20;
+    _f.strong_base_push = 30;
+    _f.strong_charge_push_bonus = 1;
 
     _f.move_speed = 2.5;
     _f.hsp = 0; _f.vsp = 0; _f.facing = 1;
     _f.stun_frames = 0; _f.knockback_x = 0; _f.knockback_y = 0;
+    _f.knockback_active = false; _f.knockback_target_x = _f.x; _f.knockback_target_y = _f.y;
     _f.hurt_sprite = spr_goku_hurted;
     _f.attack_kind = ATTACK_NONE;
     _f.charging = false; _f.charge_kind = ATTACK_NONE; _f.charge_frames = 0;
@@ -70,7 +71,7 @@ function fighter_init(_f) {
     _f.image_speed = 0; _f.image_xscale = 2; _f.image_yscale = 2;
 }
 
-function fighter_receive_hit(_target, _kind, _direction, _charge_level) {
+function fighter_receive_hit(_target, _kind, _direction, _charge_level, _server_x, _server_y) {
     if (!instance_exists(_target)) return;
     _target.attack_kind = ATTACK_NONE;
     _target.ki_charging = false; _target.ki_casting = false; _target.ki_cast_phase = 0;
@@ -79,6 +80,9 @@ function fighter_receive_hit(_target, _kind, _direction, _charge_level) {
     _target.turn_frames = 0;
     _target.hsp = 0; _target.vsp = 0;
     _target.knockback_x = 0; _target.knockback_y = 0;
+    _target.knockback_active = false;
+    _target.knockback_target_x = _target.x;
+    _target.knockback_target_y = _target.y;
 
     switch (_kind) {
         case ATTACK_NORMAL:
@@ -88,18 +92,25 @@ function fighter_receive_hit(_target, _kind, _direction, _charge_level) {
         case ATTACK_STRONG:
             _target.hurt_sprite = spr_goku_sideward_hurt;
             _target.stun_frames = 18;
-            _target.knockback_x = _direction * (_target.strong_base_push + _charge_level);
+            _target.knockback_active = true;
+            _target.knockback_target_x = _target.x + _direction * (_target.strong_base_push + _charge_level);
             break;
         case ATTACK_STRONG_HIGH:
             _target.hurt_sprite = spr_goku_sideward_hurt;
             _target.stun_frames = 18;
-            _target.knockback_y = -(_target.strong_base_push + _charge_level);
+            _target.knockback_active = true;
+            _target.knockback_target_y = _target.y - (_target.strong_base_push + _charge_level);
             break;
         case ATTACK_STRONG_LOW:
             _target.hurt_sprite = spr_goku_downward_hurt;
             _target.stun_frames = 18;
-            _target.knockback_y = _target.strong_base_push + _charge_level;
+            _target.knockback_active = true;
+            _target.knockback_target_y = _target.y + (_target.strong_base_push + _charge_level);
             break;
+    }
+    if (_target.knockback_active && _server_x >= 0 && _server_y >= 0) {
+        _target.knockback_target_x = _server_x;
+        _target.knockback_target_y = _server_y;
     }
     _target.sprite_index = _target.hurt_sprite;
     _target.image_index = 0;

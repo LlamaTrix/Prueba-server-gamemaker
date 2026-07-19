@@ -29,6 +29,11 @@
 #macro MSG_DASH         18
 #macro MSG_DASH_STATE   19
 #macro MSG_KI_HIT       20
+#macro MSG_INPUT        21
+#macro MSG_SNAPSHOT     22
+#macro MSG_PING         23
+#macro MSG_PONG         24
+#macro MSG_NAME_REJECT  25
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096
@@ -184,6 +189,27 @@ function net_send_ki_hit(_state, _target_uid) {
     return _ok;
 }
 
+function net_send_input(_state, _sequence, _dx, _dy, _facing) {
+    var _payload = buffer_create(8, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_INPUT);
+    buffer_write(_payload, buffer_u32, _sequence);
+    buffer_write(_payload, buffer_s8, _dx);
+    buffer_write(_payload, buffer_s8, _dy);
+    buffer_write(_payload, buffer_s8, _facing);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+function net_send_ping(_state, _nonce) {
+    var _payload = buffer_create(5, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_PING);
+    buffer_write(_payload, buffer_u32, _nonce);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
 function net_find_remote(_uid) {
     for (var i = 0; i < instance_number(obj_remote); i++) {
         var _remote = instance_find(obj_remote, i);
@@ -297,6 +323,18 @@ function net_read_payload(_state, _payload) {
             var _hit_kind = buffer_read(_payload, buffer_u8);
             var _hit_direction = buffer_read(_payload, buffer_s8);
             var _hit_charge = buffer_read(_payload, buffer_u8);
+            // El protocolo web incluye la vida resultante en la misma trama del
+            // impacto. Con servidores antiguos se calcula localmente como respaldo.
+            var _hit_has_health = buffer_get_size(_payload) >= 7;
+            var _hit_health = -1;
+            if (_hit_has_health) _hit_health = buffer_read(_payload, buffer_u8);
+            var _hit_has_position = buffer_get_size(_payload) >= 11;
+            var _hit_x = -1;
+            var _hit_y = -1;
+            if (_hit_has_position) {
+                _hit_x = buffer_read(_payload, buffer_u16);
+                _hit_y = buffer_read(_payload, buffer_u16);
+            }
             var _hit_target = noone;
             if (_hit_uid == _state.uid && instance_number(obj_player) > 0) {
                 _hit_target = instance_find(obj_player, 0);
@@ -304,7 +342,15 @@ function net_read_payload(_state, _payload) {
                 _hit_target = net_find_remote(_hit_uid);
             }
             if (_hit_target != noone) {
-                fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge);
+                if (_hit_has_health) {
+                    _hit_target.health = _hit_health;
+                } else {
+                    var _hit_damage = 3;
+                    if (_hit_kind != ATTACK_NORMAL) _hit_damage = 5 + _hit_charge;
+                    _hit_target.health = max(0, _hit_target.health - _hit_damage);
+                }
+                if (_hit_kind != ATTACK_NORMAL) fighter_spawn_explosion(_hit_target.x, _hit_target.y - 40);
+                fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge, _hit_x, _hit_y);
             }
             break;
 
@@ -386,6 +432,53 @@ function net_read_payload(_state, _payload) {
                     _dash_remote.dash_frames = _dash_remote.dash_visual_frames;
                 }
             }
+            break;
+
+        case MSG_SNAPSHOT:
+            var _snap_uid = buffer_read(_payload, buffer_u16);
+            var _snap_sequence = buffer_read(_payload, buffer_u32);
+            var _snap_x = buffer_read(_payload, buffer_u16);
+            var _snap_y = buffer_read(_payload, buffer_u16);
+            var _snap_facing = buffer_read(_payload, buffer_s8);
+            if (_snap_uid == _state.uid && instance_number(obj_player) > 0) {
+                var _snap_player = instance_find(obj_player, 0);
+                var _replay_x = _snap_x;
+                var _replay_y = _snap_y;
+                var _pending_new = [];
+                for (var _pi = 0; _pi < array_length(_state.pending_inputs); _pi++) {
+                    var _input = _state.pending_inputs[_pi];
+                    if (_input.sequence > _snap_sequence) {
+                        var _input_len = point_distance(0, 0, _input.dx, _input.dy);
+                        if (_input_len > 0) {
+                            _replay_x += _input.dx / _input_len * _snap_player.move_speed;
+                            _replay_y += _input.dy / _input_len * _snap_player.move_speed;
+                        }
+                        array_push(_pending_new, _input);
+                    }
+                }
+                _state.pending_inputs = _pending_new;
+                _snap_player.net_correction_x = _replay_x - _snap_player.x;
+                _snap_player.net_correction_y = _replay_y - _snap_player.y;
+            } else {
+                var _snap_remote = net_find_remote(_snap_uid);
+                if (_snap_remote != noone) {
+                    _snap_remote.target_x = _snap_x;
+                    _snap_remote.target_y = _snap_y;
+                    _snap_remote.facing = _snap_facing;
+                }
+            }
+            break;
+
+        case MSG_PONG:
+            var _pong_nonce = buffer_read(_payload, buffer_u32);
+            if (_pong_nonce == _state.ping_nonce) {
+                _state.ping_ms = max(0, current_time - _state.ping_sent_at);
+            }
+            break;
+
+        case MSG_NAME_REJECT:
+            _state.status = "name_rejected";
+            _state.error = buffer_read(_payload, buffer_string);
             break;
 
         case MSG_PLAYER_LIST:

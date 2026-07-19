@@ -13,6 +13,13 @@ if (net.status == "error" && keyboard_check_pressed(ord("R"))) {
 
 if (!net.session_ready) exit;
 
+if (current_time - net.last_ping_at >= 1000) {
+    net.ping_nonce += 1;
+    net.ping_sent_at = current_time;
+    net.last_ping_at = current_time;
+    net_send_ping(net, net.ping_nonce);
+}
+
 if (!chat_open && keyboard_check_pressed(ord("T"))) {
     chat_open = true;
     keyboard_string = "";

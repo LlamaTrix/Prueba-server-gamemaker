@@ -36,7 +36,7 @@ const MSG_WORLD = 8;   // servidor -> clientes: snapshot de todos (uid, nombre, 
 const MSG_POS = 9;     // posición y dirección de un jugador
 const MSG_BUBBLE = 10; // uid + texto para la burbuja de chat
 const MSG_ATTACK = 11; // cliente -> servidor: u8 tipo + u8 nivel de carga
-const MSG_HIT = 12;    // servidor -> clientes: u16 objetivo + u8 tipo + s8 dirección + u8 carga
+const MSG_HIT = 12;    // servidor -> clientes: objetivo, golpe, vida y posición autoritativa
 const MSG_ATTACK_STATE = 13; // servidor -> clientes: u16 atacante + u8 tipo + u8 fase
 const MSG_STATS = 14;        // servidor -> clientes: u16 uid + u8 vida + u8 ki
 const MSG_KI_CHARGE = 15;    // cliente -> servidor: u8 activo
@@ -45,6 +45,11 @@ const MSG_KI_STATE = 17;     // servidor -> clientes: u16 uid + u8 estado
 const MSG_DASH = 18;         // cliente -> servidor: s8 dirección lateral
 const MSG_DASH_STATE = 19;   // servidor -> clientes: u16 uid + u16 x + u16 y + s8 dirección
 const MSG_KI_HIT = 20;       // cliente -> servidor: u16 objetivo (impacto de onda de ki)
+const MSG_INPUT = 21;
+const MSG_SNAPSHOT = 22;
+const MSG_PING = 23;
+const MSG_PONG = 24;
+const MSG_NAME_REJECT = 25;
 const DASH_COOLDOWN_MS = 1000;
 const DASH_DISTANCE = 30;
 
@@ -59,7 +64,8 @@ const clients = new Map(); // socket -> { uid, name, inbuf, lastMovementAt, afk 
 class Writer {
   constructor() { this.parts = []; }
   u8(v)  { this.parts.push(Buffer.from([v & 0xff])); return this; }
-  u16(v) { const b = Buffer.alloc(2); b.writeUInt16LE(v); this.parts.push(b); return this; }
+  u16(v) { const b = Buffer.alloc(2); b.writeUInt16LE(Math.max(0, Math.min(65535, Math.round(v)))); this.parts.push(b); return this; }
+  u32(v) { const b = Buffer.alloc(4); b.writeUInt32LE(v >>> 0); this.parts.push(b); return this; }
   s8(v)  { const b = Buffer.alloc(1); b.writeInt8(v); this.parts.push(b); return this; }
   str(s) { this.parts.push(Buffer.from(String(s), 'utf8'), Buffer.from([0])); return this; }
   frame() {
@@ -114,6 +120,10 @@ function worldWriter() {
 
 function broadcastPosition(c) {
   broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
+}
+
+function broadcastSnapshot(c) {
+  broadcast(new Writer().u8(MSG_SNAPSHOT).u16(c.uid).u32(c.lastInputSeq).u16(c.x).u16(c.y).s8(c.facing));
 }
 
 function broadcastStats(c, exceptSocket = null) {
@@ -190,7 +200,16 @@ function handleMessage(socket, payload) {
     const r = readString(payload, 1);
     if (!r) return;
     let name = r.value.trim().slice(0, MAX_NAME_LEN);
-    if (name === '') name = 'Jugador' + c.uid;
+    if (name === '') {
+      send(socket, new Writer().u8(MSG_NAME_REJECT).str('El nombre es obligatorio'));
+      return;
+    }
+    const duplicate = [...clients.values()].some(other => other !== c && other.name !== null
+      && other.name.toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      send(socket, new Writer().u8(MSG_NAME_REJECT).str('Ese nombre ya está en uso'));
+      return;
+    }
     c.name = name;
     c.x = 100 + Math.floor(Math.random() * 3801);
     c.y = 100 + Math.floor(Math.random() * 3801);
@@ -213,17 +232,32 @@ function handleMessage(socket, payload) {
     broadcast(new Writer().u8(MSG_BUBBLE).u16(c.uid).str(text));
     console.log(`[chat] ${c.name}: ${text}`);
 
-  } else if (msg === MSG_POS && c.name !== null && payload.length >= 6) {
-    c.x = Math.max(20, Math.min(3980, payload.readUInt16LE(1)));
-    c.y = Math.max(48, Math.min(3990, payload.readUInt16LE(3)));
-    c.facing = payload.readInt8(5) < 0 ? -1 : 1;
+  } else if (msg === MSG_INPUT && c.name !== null && payload.length >= 8) {
+    const sequence = payload.readUInt32LE(1);
+    if (sequence <= c.lastInputSeq || sequence - c.lastInputSeq > 180) return;
+    c.lastInputSeq = sequence;
+    const dx = Math.max(-1, Math.min(1, payload.readInt8(5)));
+    const dy = Math.max(-1, Math.min(1, payload.readInt8(6)));
+    c.facing = payload.readInt8(7) < 0 ? -1 : 1;
+    const length = Math.hypot(dx, dy);
+    if (length > 0) {
+      c.x = Math.max(20, Math.min(3980, c.x + dx / length * 3));
+      c.y = Math.max(48, Math.min(3990, c.y + dy / length * 3));
+    }
     c.lastMovementAt = Date.now();
     if (c.afk) {
       c.afk = false;
       broadcast(playerListWriter());
       systemChat(`${c.name} ya no está AFK`);
     }
-    broadcastPosition(c);
+    broadcastSnapshot(c);
+
+  } else if (msg === MSG_POS && c.name !== null) {
+    // Compatibilidad: las posiciones enviadas por clientes ya no son autoridad.
+    return;
+
+  } else if (msg === MSG_PING && c.name !== null && payload.length >= 5) {
+    send(socket, new Writer().u8(MSG_PONG).u32(payload.readUInt32LE(1)));
 
   } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 3) {
     const now = Date.now();
@@ -245,10 +279,10 @@ function handleMessage(socket, payload) {
       applyDamage(target, damage);
       // El servidor mueve también la posición autoritativa para que el empuje
       // sea visible de forma consistente tanto en escritorio como en HTML5.
-      if (kind === 2) target.x = Math.max(20, Math.min(3980, target.x + c.facing * (8 + charge)));
-      if (kind === 3) target.y = Math.max(48, Math.min(3990, target.y - (8 + charge)));
-      if (kind === 4) target.y = Math.max(48, Math.min(3990, target.y + (8 + charge)));
-      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge));
+      if (kind === 2) target.x = Math.max(20, Math.min(3980, target.x + c.facing * (30 + charge)));
+      if (kind === 3) target.y = Math.max(48, Math.min(3990, target.y - (30 + charge)));
+      if (kind === 4) target.y = Math.max(48, Math.min(3990, target.y + (30 + charge)));
+      broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(kind).s8(c.facing).u8(charge).u8(target.health).u16(target.x).u16(target.y));
       if (kind !== 1) broadcastPosition(target);
       console.log(`[hit] ${c.name} -> ${target.name} (tipo ${kind}, carga ${charge})`);
     }
@@ -284,7 +318,7 @@ function handleMessage(socket, payload) {
     if (Math.hypot(target.x - c.x, target.y - c.y) > 1150) return;
     c.lastKiHitAt = now;
     applyDamage(target, 3);
-    broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0));
+    broadcast(new Writer().u8(MSG_HIT).u16(target.uid).u8(1).s8(c.facing).u8(0).u8(target.health).u16(target.x).u16(target.y));
     console.log(`[ki-hit] ${c.name} -> ${target.name} (vida ${target.health})`);
 
   } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
@@ -338,7 +372,8 @@ function newClientRecord() {
     kiCharging: false,
     lastKiFireAt: 0,
     lastKiHitAt: 0,
-    lastDashAt: 0
+    lastDashAt: 0,
+    lastInputSeq: 0
   };
 }
 
@@ -459,7 +494,7 @@ const started = Date.now();
 http.createServer((req, res) => {
   const names = [...clients.values()].filter(c => c.name !== null).map(c => c.name);
   if (req.url === '/status.json') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ online: true, jugadores: names.length, nombres: names, desde: new Date(started).toISOString() }));
     return;
   }

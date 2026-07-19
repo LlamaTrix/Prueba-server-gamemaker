@@ -6,17 +6,23 @@ if (dash_tap_timer > 0) {
     if (dash_tap_timer <= 0) dash_tap_direction = 0;
 }
 if (_was_stunned) {
-    stun_frames -= 1;
-    if (!remote_controlled) {
-        hsp = knockback_x; vsp = knockback_y;
-        knockback_x *= 0.82; knockback_y *= 0.82;
+    if (knockback_active) {
+        // Reparte exactamente la distancia restante entre los frames de stun.
+        hsp = (knockback_target_x - x) / max(1, stun_frames);
+        vsp = (knockback_target_y - y) / max(1, stun_frames);
     }
+    stun_frames -= 1;
 }
 
 var _nx = clamp(x + hsp, 20, room_width - 20);
 x = _nx;
 var _ny = clamp(y + vsp, 48, room_height - 10);
 y = _ny;
+if (_was_stunned && stun_frames <= 0 && knockback_active) {
+    x = clamp(knockback_target_x, 20, room_width - 20);
+    y = clamp(knockback_target_y, 48, room_height - 10);
+    knockback_active = false;
+}
 
 if (_was_stunned) {
     sprite_index = hurt_sprite; image_index = 0; image_xscale = 2 * facing;
