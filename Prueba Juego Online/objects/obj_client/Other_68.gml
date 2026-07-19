@@ -1,4 +1,5 @@
 var type = async_load[? "type"];
+show_debug_message("[cliente] evento de red tipo " + string(type));
 
 switch (type) {
     case network_type_disconnect:
@@ -6,9 +7,23 @@ switch (type) {
         error_msg = "Se perdió la conexión con el servidor";
         break;
 
+    case network_type_non_blocking_connect:
+        // por si el runtime hace el connect asíncrono
+        if (async_load[? "succeeded"]) {
+            show_debug_message("[cliente] connect asíncrono OK, enviando MSG_JOIN");
+            connected = true;
+            estado = "conectado";
+            net_send_string(client, MSG_JOIN, username);
+        } else {
+            estado = "error";
+            error_msg = "No se pudo conectar a " + SERVER_IP + ":" + string(SERVER_PORT) + " (async)";
+        }
+        break;
+
     case network_type_data: {
         var buf  = async_load[? "buffer"];
         var size = async_load[? "size"];
+        show_debug_message("[cliente] datos recibidos: " + string(size) + " bytes");
 
         // acumular lo recibido al final de inbuf
         buffer_copy(buf, 0, size, inbuf, inbuf_size);

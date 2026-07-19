@@ -3,9 +3,19 @@ if (error_msg != "") {
     draw_text(20, 20, error_msg);
     exit;
 }
+if (estado == "esperando_nombre") {
+    draw_set_color(c_yellow);
+    draw_text(20, 20, "Esperando que escribas tu nombre...");
+    exit;
+}
 if (!connected) {
     draw_set_color(c_yellow);
-    draw_text(20, 20, "Conectando...");
+    draw_text(20, 20, "Conectando a " + SERVER_IP + ":" + string(SERVER_PORT) + "...");
+    exit;
+}
+if (my_uid < 0) {
+    draw_set_color(c_yellow);
+    draw_text(20, 20, "Conectado. Esperando respuesta del servidor...");
     exit;
 }
 
