@@ -61,6 +61,19 @@ const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_
 let nextUid = 1;
 const clients = new Map(); // socket -> { uid, name, inbuf, lastMovementAt, afk }
 
+function allocateUid() {
+  for (let attempt = 0; attempt < 65535; attempt++) {
+    const candidate = nextUid;
+    nextUid = nextUid >= 65535 ? 1 : nextUid + 1;
+    let used = false;
+    for (const player of clients.values()) {
+      if (player.name !== null && player.uid === candidate) { used = true; break; }
+    }
+    if (!used) return candidate;
+  }
+  return 0;
+}
+
 // ---------- helpers de escritura ----------
 
 class Writer {
@@ -132,6 +145,13 @@ function broadcastStats(c, exceptSocket = null) {
   const frame = new Writer().u8(MSG_STATS).u16(c.uid).u8(c.health).u8(c.ki).frame();
   for (const [socket, player] of clients) {
     if (socket !== exceptSocket && player.name !== null && !socket.destroyed) socket.write(frame);
+  }
+}
+
+function broadcastWorldAndStats() {
+  broadcast(worldWriter());
+  for (const player of clients.values()) {
+    if (player.name !== null) broadcastStats(player);
   }
 }
 
@@ -218,6 +238,12 @@ function handleMessage(socket, payload) {
       send(socket, new Writer().u8(MSG_NAME_REJECT).str('Ese nombre ya está en uso'));
       return;
     }
+    c.uid = allocateUid();
+    if (c.uid === 0) {
+      send(socket, new Writer().u8(MSG_KICK).str('El servidor está lleno'));
+      socket.end();
+      return;
+    }
     c.name = name;
     c.x = 100 + Math.floor(Math.random() * 1801);
     c.y = 100 + Math.floor(Math.random() * 1801);
@@ -226,8 +252,7 @@ function handleMessage(socket, payload) {
 
     send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid).u16(c.x).u16(c.y));
     broadcast(playerListWriter());
-    broadcast(worldWriter());
-    for (const player of clients.values()) if (player.name !== null) send(socket, new Writer().u8(MSG_STATS).u16(player.uid).u8(player.health).u8(player.ki));
+    broadcastWorldAndStats();
     systemChat(`${name} entró al lobby`);
     console.log(`[+] ${name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
 
@@ -366,7 +391,7 @@ function countPlayers() {
 
 function newClientRecord() {
   return {
-    uid: nextUid++,
+    uid: 0,
     name: null,
     inbuf: Buffer.alloc(0),
     lastMovementAt: Date.now(),
@@ -412,7 +437,7 @@ function disconnect(conn) {
   if (c.name !== null) {
     console.log(`[-] ${c.name} se desconectó — ${countPlayers()} en línea`);
     broadcast(playerListWriter());
-    broadcast(worldWriter());
+    broadcastWorldAndStats();
     systemChat(`${c.name} salió del lobby`);
   }
 }

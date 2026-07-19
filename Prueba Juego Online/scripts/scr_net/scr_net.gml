@@ -62,6 +62,7 @@ function net_close(_state) {
 /// Inicia una conexión nueva y devuelve true si pudo arrancarla.
 function net_connect(_state) {
     net_close(_state);
+    _state.player_states = {};
     _state.kicked = false;
     _state.last_activity_sent = current_time;
     _state.error = "";
@@ -220,6 +221,26 @@ function net_find_remote(_uid) {
     return noone;
 }
 
+function net_cache_stats(_state, _uid, _health, _ki) {
+    var _key = "uid_" + string(_uid);
+    var _old_ki = 0;
+    if (variable_struct_exists(_state.player_states, _key)) {
+        _old_ki = variable_struct_get(_state.player_states, _key).ki;
+    }
+    if (_ki < 0) _ki = _old_ki;
+    variable_struct_set(_state.player_states, _key, { health: _health, ki: _ki });
+}
+
+function net_apply_cached_stats(_state, _uid, _fighter) {
+    if (_fighter == noone || !instance_exists(_fighter)) return;
+    var _key = "uid_" + string(_uid);
+    if (variable_struct_exists(_state.player_states, _key)) {
+        var _cached = variable_struct_get(_state.player_states, _key);
+        _fighter.health = _cached.health;
+        _fighter.ki = _cached.ki;
+    }
+}
+
 function net_set_bubble(_uid, _text) {
     if (instance_number(obj_player) > 0) {
         var _local = instance_find(obj_player, 0);
@@ -280,7 +301,9 @@ function net_read_payload(_state, _payload) {
             break;
 
         case MSG_WORLD:
-            with (obj_remote) instance_destroy();
+            // Reconciliar por UID: nunca recrear un remoto que ya existe, porque
+            // fighter_init() restablecería su vida y ki.
+            with (obj_remote) world_seen = false;
             var _world_count = buffer_read(_payload, buffer_u16);
             for (var _wi = 0; _wi < _world_count; _wi++) {
                 var _uid = buffer_read(_payload, buffer_u16);
@@ -289,13 +312,21 @@ function net_read_payload(_state, _payload) {
                 var _y = buffer_read(_payload, buffer_u16);
                 var _facing = buffer_read(_payload, buffer_s8);
                 if (_uid != _state.uid) {
-                    var _remote = instance_create_layer(_x, _y, "Instances", obj_remote);
+                    var _remote = net_find_remote(_uid);
+                    if (_remote == noone) {
+                        _remote = instance_create_layer(_x, _y, "Instances", obj_remote);
+                    }
                     _remote.remote_uid = _uid;
                     _remote.remote_name = _name;
                     _remote.target_x = _x;
                     _remote.target_y = _y;
                     _remote.facing = _facing;
+                    _remote.world_seen = true;
+                    net_apply_cached_stats(_state, _uid, _remote);
                 }
+            }
+            with (obj_remote) {
+                if (!world_seen) instance_destroy();
             }
             break;
 
@@ -360,6 +391,7 @@ function net_read_payload(_state, _payload) {
                 if (_hit_kind != ATTACK_NORMAL) fighter_spawn_explosion(_hit_target.x, _hit_target.y - 40);
                 fighter_receive_hit(_hit_target, _hit_kind, _hit_direction, _hit_charge, _hit_x, _hit_y);
             }
+            if (_hit_has_health) net_cache_stats(_state, _hit_uid, _hit_health, -1);
             break;
 
         case MSG_ATTACK_STATE:
@@ -394,6 +426,7 @@ function net_read_payload(_state, _payload) {
             var _stats_uid = buffer_read(_payload, buffer_u16);
             var _stats_health = buffer_read(_payload, buffer_u8);
             var _stats_ki = buffer_read(_payload, buffer_u8);
+            net_cache_stats(_state, _stats_uid, _stats_health, _stats_ki);
             var _stats_target = noone;
             if (_stats_uid == _state.uid && instance_number(obj_player) > 0) {
                 _stats_target = instance_find(obj_player, 0);

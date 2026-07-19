@@ -28,6 +28,7 @@ net = {
     last_sent_facing: 0,
     input_sequence: 0,
     pending_inputs: [],
+    player_states: {},
     ping_ms: -1,
     ping_nonce: 0,
     ping_sent_at: 0,
