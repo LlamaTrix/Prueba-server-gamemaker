@@ -7,18 +7,20 @@ switch (type) {
         error_msg = "Se perdió la conexión con el servidor";
         break;
 
-    case network_type_non_blocking_connect:
-        // por si el runtime hace el connect asíncrono
-        if (async_load[? "succeeded"]) {
-            show_debug_message("[cliente] connect asíncrono OK, enviando MSG_JOIN");
+    case network_type_non_blocking_connect: {
+        // resultado de network_connect_raw_async
+        var ok = async_load[? "succeeded"];
+        show_debug_message("[cliente] resultado de conexión (succeeded=" + string(ok) + ")");
+        if (ok) {
+            show_debug_message("[cliente] conectado, enviando MSG_JOIN...");
             connected = true;
             estado = "conectado";
             net_send_string(client, MSG_JOIN, username);
         } else {
             estado = "error";
-            error_msg = "No se pudo conectar a " + SERVER_IP + ":" + string(SERVER_PORT) + " (async)";
+            error_msg = "No se pudo conectar a " + SERVER_IP + ":" + string(SERVER_PORT);
         }
-        break;
+    } break;
 
     case network_type_data: {
         var buf  = async_load[? "buffer"];
