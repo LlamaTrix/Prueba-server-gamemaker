@@ -350,21 +350,16 @@ function net_read_payload(_state, _payload) {
             var _dash_x = buffer_read(_payload, buffer_u16);
             var _dash_y = buffer_read(_payload, buffer_u16);
             var _dash_direction = buffer_read(_payload, buffer_s8);
-            var _dash_target = noone;
-            if (_dash_uid == _state.uid && instance_number(obj_player) > 0) {
-                _dash_target = instance_find(obj_player, 0);
-                _dash_target.x = _dash_x;
-                _dash_target.y = _dash_y;
-            } else {
-                _dash_target = net_find_remote(_dash_uid);
-                if (_dash_target != noone) {
-                    _dash_target.target_x = _dash_x;
-                    _dash_target.target_y = _dash_y;
+            // Nuestro propio personaje es autoridad local: el eco de nuestro dash
+            // se ignora (igual que el ki), para que el vanish no se vea dos veces.
+            if (_dash_uid != _state.uid) {
+                var _dash_remote = net_find_remote(_dash_uid);
+                if (_dash_remote != noone) {
+                    _dash_remote.target_x = _dash_x;
+                    _dash_remote.target_y = _dash_y;
+                    _dash_remote.dash_direction = _dash_direction;
+                    _dash_remote.dash_frames = _dash_remote.dash_visual_frames;
                 }
-            }
-            if (_dash_target != noone) {
-                _dash_target.dash_direction = _dash_direction;
-                _dash_target.dash_frames = _dash_target.dash_visual_frames;
             }
             break;
 
