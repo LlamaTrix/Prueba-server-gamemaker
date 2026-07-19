@@ -2,7 +2,7 @@
 /// El servidor es Node.js (carpeta server/ del repo). Se usan sockets RAW:
 /// cada trama lleva un prefijo u16 (little-endian) con el largo del payload.
 
-#macro SERVER_IP   "62.84.184.67"
+#macro SERVER_IP   "prueba.minecruz.com"
 #macro SERVER_PORT 6510
 
 // IDs de mensaje (1 byte al inicio de cada payload)

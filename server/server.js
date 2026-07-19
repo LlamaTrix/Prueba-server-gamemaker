@@ -14,8 +14,10 @@
 //                      servidor -> todos   : string nombre, string texto
 
 const net = require('net');
+const http = require('http');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 6510;
+const HTTP_PORT = process.env.HTTP_PORT ? Number(process.env.HTTP_PORT) : 6511;
 const MAX_NAME_LEN = 24;
 const MAX_CHAT_LEN = 200;
 
@@ -144,4 +146,29 @@ const server = net.createServer(socket => {
 
 server.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
+});
+
+// ---------- página de estado (detrás de nginx en prueba.minecruz.com) ----------
+
+const started = Date.now();
+
+http.createServer((req, res) => {
+  const names = [...clients.values()].filter(c => c.name !== null).map(c => c.name);
+  if (req.url === '/status.json') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ online: true, jugadores: names.length, nombres: names, desde: new Date(started).toISOString() }));
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!doctype html><html lang="es"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Servidor del juego</title>
+<style>body{font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0}
+main{text-align:center}h1{color:#6f6}code{background:#222;padding:2px 8px;border-radius:6px}</style>
+<main><h1>&#9679; Servidor en línea</h1>
+<p>Jugadores conectados: <strong>${names.length}</strong></p>
+<p>${names.map(n => `<code>${String(n).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</code>`).join(' ') || '(nadie todavía)'}</p>
+<p>Conéctate desde el juego a <code>prueba.minecruz.com:${PORT}</code></p></main></html>`);
+}).listen(HTTP_PORT, '127.0.0.1', () => {
+  console.log(`Página de estado en http://127.0.0.1:${HTTP_PORT}`);
 });
