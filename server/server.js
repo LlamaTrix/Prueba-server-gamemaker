@@ -50,6 +50,8 @@ const MSG_SNAPSHOT = 22;
 const MSG_PING = 23;
 const MSG_PONG = 24;
 const MSG_NAME_REJECT = 25;
+const MSG_SERVER_QUERY = 26;
+const MSG_SERVER_INFO = 27;
 const DASH_COOLDOWN_MS = 1000;
 const DASH_DISTANCE = 30;
 
@@ -196,7 +198,10 @@ function handleMessage(socket, payload) {
   if (!c || payload.length < 1) return;
   const msg = payload.readUInt8(0);
 
-  if (msg === MSG_JOIN && c.name === null) {
+  if (msg === MSG_SERVER_QUERY) {
+    send(socket, new Writer().u8(MSG_SERVER_INFO).u16(countPlayers()).str('Servidor principal'));
+
+  } else if (msg === MSG_JOIN && c.name === null) {
     const r = readString(payload, 1);
     if (!r) return;
     let name = r.value.trim().slice(0, MAX_NAME_LEN);

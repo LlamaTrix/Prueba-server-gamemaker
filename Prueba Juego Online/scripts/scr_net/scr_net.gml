@@ -34,6 +34,8 @@
 #macro MSG_PING         23
 #macro MSG_PONG         24
 #macro MSG_NAME_REJECT  25
+#macro MSG_SERVER_QUERY 26
+#macro MSG_SERVER_INFO  27
 
 #macro NET_CONNECT_TIMEOUT_MS 10000
 #macro NET_MAX_PAYLOAD        4096

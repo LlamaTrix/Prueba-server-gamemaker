@@ -17,7 +17,7 @@ if (net.status != "online") {
 
 // HUD compacto: deja visible el mundo y los luchadores.
 draw_set_color(make_color_rgb(15, 20, 28));
-draw_rectangle(5, 5, 395, 46, false);
+draw_rectangle(5, 5, 395, 34, false);
 draw_set_color(c_aqua);
 draw_text(10, 10, username + "  |  jugadores: " + string(array_length(net.players)));
 
@@ -25,9 +25,7 @@ if (instance_number(obj_player) > 0) {
     var _player = instance_find(obj_player, 0);
     draw_set_halign(fa_right);
     draw_set_color(c_white);
-    var _ping_text = (net.ping_ms >= 0) ? string(round(net.ping_ms)) + " ms" : "-- ms";
-    draw_text(390, 8, "PING " + _ping_text);
-    draw_text(390, 24, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
+    draw_text(390, 10, "X " + string(round(_player.x)) + "  Y " + string(round(_player.y)));
     draw_set_halign(fa_left);
 }
 

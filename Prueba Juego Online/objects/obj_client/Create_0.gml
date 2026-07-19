@@ -2,12 +2,12 @@ username = variable_global_exists("pending_username") ? global.pending_username 
 chat_input = "";
 chat_open = false;
 
-// La interfaz usa una superficie lógica fija de 400 x 400.
 display_set_gui_size(400, 400);
-window_set_size(400, 400);
-window_center();
+if (os_browser == browser_not_a_browser) {
+    window_set_size(400, 400);
+    window_center();
+}
 
-// Todo el estado mutable de red vive aquí; los eventos solo lo orquestan.
 net = {
     socket: -1,
     tcp_connected: false,

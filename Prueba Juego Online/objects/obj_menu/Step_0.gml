@@ -3,10 +3,15 @@ var _my = device_mouse_y_to_gui(0);
 var _click = mouse_check_button_pressed(mb_left);
 
 if (menu_state == 0) {
+    if (!server_online && probe_socket >= 0 && current_time - probe_started_at > 8000) {
+        server_error = "Tiempo de espera agotado";
+        menu_close_probe(id);
+    }
     if (_click && point_in_rectangle(_mx, _my, 270, 325, 390, 365)) {
-        menu_refresh_server(self);
+        menu_refresh_server(id);
     }
     if (_click && server_online && point_in_rectangle(_mx, _my, 20, 115, 380, 190)) {
+        menu_close_probe(id);
         menu_state = 1;
         keyboard_string = "";
         username_input = "";
