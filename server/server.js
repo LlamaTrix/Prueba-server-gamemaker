@@ -79,6 +79,13 @@ function broadcast(writer) {
   }
 }
 
+function broadcastExcept(writer, exceptSocket) {
+  const frame = writer.frame();
+  for (const [socket, c] of clients) {
+    if (socket !== exceptSocket && c.name !== null && !socket.destroyed) socket.write(frame);
+  }
+}
+
 function readString(buf, offset) {
   const end = buf.indexOf(0, offset);
   if (end === -1) return null;
@@ -107,8 +114,11 @@ function broadcastPosition(c) {
   broadcast(new Writer().u8(MSG_POS).u16(c.uid).u16(c.x).u16(c.y).s8(c.facing));
 }
 
-function broadcastStats(c) {
-  broadcast(new Writer().u8(MSG_STATS).u16(c.uid).u8(c.health).u8(c.ki));
+function broadcastStats(c, exceptSocket = null) {
+  const frame = new Writer().u8(MSG_STATS).u16(c.uid).u8(c.health).u8(c.ki).frame();
+  for (const [socket, player] of clients) {
+    if (socket !== exceptSocket && player.name !== null && !socket.destroyed) socket.write(frame);
+  }
 }
 
 function applyDamage(target, damage) {
@@ -225,7 +235,7 @@ function handleMessage(socket, payload) {
     if (kind === 1 || kind === 2) charge = 0;
 
     // Todos ven la animación del atacante, incluso cuando el golpe no alcanza a nadie.
-    broadcast(new Writer().u8(MSG_ATTACK_STATE).u16(c.uid).u8(kind).u8(comboStage));
+    broadcastExcept(new Writer().u8(MSG_ATTACK_STATE).u16(c.uid).u8(kind).u8(comboStage), socket);
 
     const target = findAttackTarget(c, kind);
     if (target) {
@@ -239,7 +249,7 @@ function handleMessage(socket, payload) {
     const active = payload.readUInt8(1) !== 0;
     if (c.kiCharging !== active) {
       c.kiCharging = active;
-      broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(active ? 1 : 0));
+      broadcastExcept(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(active ? 1 : 0), socket);
     }
 
   } else if (msg === MSG_KI_FIRE && c.name !== null && payload.length >= 2) {
@@ -248,9 +258,9 @@ function handleMessage(socket, payload) {
     c.lastKiFireAt = now;
     c.ki -= 5;
     const forwardBlast = payload.readUInt8(1) !== 0;
-    broadcastStats(c);
+    broadcastStats(c, socket);
     // Solo dispara la animación; el daño lo aplica el impacto real del proyectil (MSG_KI_HIT).
-    broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(forwardBlast ? 3 : 2));
+    broadcastExcept(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(forwardBlast ? 3 : 2), socket);
 
   } else if (msg === MSG_KI_HIT && c.name !== null && payload.length >= 3) {
     // El cliente que lanzó la onda avisa que impactó a alguien. El servidor valida y aplica daño.
@@ -277,8 +287,8 @@ function handleMessage(socket, payload) {
     c.ki -= 5;
     c.x = Math.max(20, Math.min(3980, c.x + direction * DASH_DISTANCE));
     c.lastMovementAt = now;
-    broadcastStats(c);
-    broadcast(new Writer().u8(MSG_DASH_STATE).u16(c.uid).u16(c.x).u16(c.y).s8(direction));
+    broadcastStats(c, socket);
+    broadcastExcept(new Writer().u8(MSG_DASH_STATE).u16(c.uid).u16(c.x).u16(c.y).s8(direction), socket);
     broadcastPosition(c);
 
   } else if (msg === MSG_ACTIVITY && c.name !== null) {
@@ -386,10 +396,10 @@ setInterval(() => {
 
 // Recarga de ki autoritativa: aproximadamente un punto por frame (60/s).
 setInterval(() => {
-  for (const c of clients.values()) {
+  for (const [socket, c] of clients) {
     if (c.name === null || !c.kiCharging || c.ki >= 100) continue;
     c.ki += 1;
-    broadcastStats(c);
+    broadcastStats(c, socket);
   }
 }, 1000 / 60);
 

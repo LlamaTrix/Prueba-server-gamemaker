@@ -5,6 +5,7 @@ image_speed = 0;
 image_index = 0;
 image_xscale = 2;
 image_yscale = 2;
+depth = -100;
 
 // Quién disparó la onda. Solo el proyectil del jugador local reporta el impacto.
 owner_instance = noone;

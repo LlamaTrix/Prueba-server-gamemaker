@@ -38,7 +38,4 @@ if (chat_open) {
     var _shown = chat_input;
     if (string_length(_shown) > 43) _shown = string_copy(_shown, string_length(_shown) - 42, 43);
     draw_text(10, 376, "> " + _shown + "_");
-} else {
-    draw_text(10, 356, "Flechas mover A girar Z combo T chat");
-    draw_text(10, 374, "X fuerte  D cargar ki  C onda ki");
 }

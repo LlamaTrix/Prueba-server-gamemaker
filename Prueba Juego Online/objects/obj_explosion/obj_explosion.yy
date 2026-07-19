@@ -9,7 +9,10 @@
   "managed":true,
   "name":"obj_explosion",
   "overriddenProperties":[],
-  "parent":{"name":"Prueba Juego Online","path":"Prueba Juego Online.yyp",},
+  "parent":{
+    "name":"Prueba Juego Online",
+    "path":"Prueba Juego Online.yyp",
+  },
   "parentObjectId":null,
   "persistent":false,
   "physicsAngularDamping":0.1,
