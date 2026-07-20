@@ -7,7 +7,8 @@ if (instance_number(obj_client) > 0) {
     _match_phase = instance_find(obj_client, 0).net.match_phase;
 }
 if (_match_phase != 2) {
-    hsp = 0; vsp = 0;
+    fighter_reset_action_state(self);
+    event_inherited();
     exit;
 }
 
@@ -222,8 +223,8 @@ if (!_chat_blocked && stun_frames <= 0) {
 }
 
 if (!variable_global_exists("gameplay_ready") || !global.gameplay_ready) {
-    hsp = 0;
-    vsp = 0;
+    fighter_reset_action_state(self);
+    event_inherited();
     exit;
 }
 

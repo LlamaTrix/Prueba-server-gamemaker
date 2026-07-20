@@ -512,6 +512,9 @@ function net_read_payload(_state, _payload) {
             if (_attacker_uid != _state.uid) {
                 var _attacker = net_find_remote(_attacker_uid);
                 if (_attacker != noone) {
+                    // Un ataque aceptado por el servidor implica que no sigue
+                    // bloqueando ni ejecutando otra accion visual prioritaria.
+                    fighter_reset_action_state(_attacker);
                     // Sonido de "apretar" del rival (el impacto suena aparte).
                     if (_attacker_kind == ATTACK_NORMAL) audio_play_sound(snd_punch_basic, 4, false);
                     else audio_play_sound(snd_punch_strong, 4, false);
@@ -555,12 +558,16 @@ function net_read_payload(_state, _payload) {
             if (_ki_uid != _state.uid) {
                 var _ki_remote = net_find_remote(_ki_uid);
                 if (_ki_remote != noone) {
+                    var _continue_ki_combo = _ki_state == 2
+                        && _ki_remote.ki_casting && !_ki_remote.ki_forward;
+                    var _previous_ki_image = _ki_remote.ki_blast_image;
+                    if (_ki_state != 0) fighter_reset_action_state(_ki_remote);
                     _ki_remote.ki_charging = _ki_state == 1;
                     if (_ki_state == 2 || _ki_state == 3) {
                         _ki_remote.ki_casting = true;
                         _ki_remote.ki_forward = _ki_state == 3;
                         _ki_remote.ki_cast_timer = (_ki_state == 3) ? 10 : 20;
-                        _ki_remote.ki_blast_image = 1;
+                        _ki_remote.ki_blast_image = _continue_ki_combo ? 1 - _previous_ki_image : 0;
                     }
                 }
             }
@@ -576,6 +583,7 @@ function net_read_payload(_state, _payload) {
             if (_dash_uid != _state.uid) {
                 var _dash_remote = net_find_remote(_dash_uid);
                 if (_dash_remote != noone) {
+                    fighter_reset_action_state(_dash_remote);
                     _dash_remote.target_x = _dash_x;
                     _dash_remote.target_y = _dash_y;
                     _dash_remote.dash_direction = _dash_direction;
@@ -620,6 +628,7 @@ function net_read_payload(_state, _payload) {
             break;
 
         case MSG_LOBBY_STATE: {
+            var _previous_match_phase = _state.match_phase;
             _state.match_phase = buffer_read(_payload, buffer_u8);
             _state.match_seconds = buffer_read(_payload, buffer_u16);
             var _lobby_count = buffer_read(_payload, buffer_u16);
@@ -633,6 +642,10 @@ function net_read_payload(_state, _payload) {
                 };
                 array_push(_state.match_players, _entry);
                 if (_entry.uid == _state.uid) _state.my_ready = _entry.ready;
+            }
+            if (_state.match_phase != _previous_match_phase) {
+                with (obj_player) fighter_reset_action_state(id);
+                with (obj_remote) fighter_reset_action_state(id);
             }
         } break;
 
@@ -655,6 +668,7 @@ function net_read_payload(_state, _payload) {
             var _respawn_target = net_find_fighter(_state, _respawn_uid);
             if (_respawn_target != noone) {
                 _respawn_target.health = 100;
+                fighter_reset_action_state(_respawn_target);
                 if (_respawn_uid == _state.uid) {
                     _respawn_target.x = _respawn_x;
                     _respawn_target.y = _respawn_y;

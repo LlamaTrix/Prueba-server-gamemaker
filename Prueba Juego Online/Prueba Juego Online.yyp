@@ -69,6 +69,7 @@
     {"id":{"name":"spr_goku_forward","path":"sprites/spr_goku_forward/spr_goku_forward.yy",},},
     {"id":{"name":"spr_goku_guard","path":"sprites/spr_goku_guard/spr_goku_guard.yy",},},
     {"id":{"name":"spr_goku_hurted","path":"sprites/spr_goku_hurted/spr_goku_hurted.yy",},},
+    {"id":{"name":"spr_goku_ko","path":"sprites/spr_goku_ko/spr_goku_ko.yy",},},
     {"id":{"name":"spr_goku_sideward_hurt","path":"sprites/spr_goku_sideward_hurt/spr_goku_sideward_hurt.yy",},},
     {"id":{"name":"spr_goku_strong_high","path":"sprites/spr_goku_strong_high/spr_goku_strong_high.yy",},},
     {"id":{"name":"spr_goku_strong_low","path":"sprites/spr_goku_strong_low/spr_goku_strong_low.yy",},},

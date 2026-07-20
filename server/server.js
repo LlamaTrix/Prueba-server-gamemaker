@@ -313,10 +313,13 @@ function respawnPlayer(c) {
   c.stunUntil = 0;
   c.inputDx = 0;
   c.inputDy = 0;
+  c.kiCharging = false;
   c.guarding = false;
   c.guardCooldownUntil = 0;
   c.stateRevision += 1;
   broadcast(new Writer().u8(MSG_RESPAWN).u16(c.uid).u16(c.x).u16(c.y));
+  broadcast(new Writer().u8(MSG_GUARD_STATE).u16(c.uid).u8(0));
+  broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(0));
   broadcastStats(c);
 }
 
@@ -362,7 +365,15 @@ function backToLobby() {
     c.dead = false;
     c.health = 100;
     c.ki = 0;
+    c.stunUntil = 0;
+    c.inputDx = 0;
+    c.inputDy = 0;
+    c.kiCharging = false;
+    c.guarding = false;
+    c.guardCooldownUntil = 0;
     c.stateRevision += 1;
+    broadcast(new Writer().u8(MSG_GUARD_STATE).u16(c.uid).u8(0));
+    broadcast(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(0));
   }
   broadcastWorldAndStats();
   broadcastLobbyState();
@@ -661,6 +672,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_KI_CHARGE && c.name !== null && payload.length >= 2) {
     const active = payload.readUInt8(1) !== 0;
+    if (active && (matchState.phase !== 'match' || c.dead || c.guarding || Date.now() < c.stunUntil)) return;
     if (c.kiCharging !== active) {
       c.kiCharging = active;
       broadcastExcept(new Writer().u8(MSG_KI_STATE).u16(c.uid).u8(active ? 1 : 0), socket);
@@ -668,7 +680,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_KI_FIRE && c.name !== null && payload.length >= 2) {
     const now = Date.now();
-    if (matchState.phase !== 'match' || c.dead) return;
+    if (matchState.phase !== 'match' || c.dead || c.guarding) return;
     if (now < c.stunUntil) return;
     if (c.ki < 5 || now - c.lastKiFireAt < 70) return;
     c.lastKiFireAt = now;
@@ -681,7 +693,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
     const now = Date.now();
-    if (matchState.phase !== 'match' || c.dead) return;
+    if (matchState.phase !== 'match' || c.dead || c.guarding) return;
     if (now < c.stunUntil) return;
     const direction = payload.readInt8(1) < 0 ? -1 : 1;
     if (c.ki < 5 || now - c.lastDashAt < DASH_COOLDOWN_MS) return;

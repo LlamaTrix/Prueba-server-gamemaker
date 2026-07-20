@@ -598,7 +598,7 @@ test('REST, ticket de un uso y combate autoritativo completo', { timeout: 120_00
     assert.equal(strong.kind, 2);
     assert.equal(strong.damage, 5);
     assert.equal(strong.healthAfter, 92);
-    assert.equal(strong.pushX, strong.attackerFacing * 30);
+    assert.equal(strong.pushX, strong.attackerFacing * 100);
     assert.equal(strong.pushY, 0);
 
     // Esta entrada intenta volver inmediatamente a la posición anterior. El servidor
