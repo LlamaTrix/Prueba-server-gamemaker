@@ -112,11 +112,29 @@ function fighter_receive_hit(_target, _kind, _direction, _charge_level, _server_
         _target.knockback_target_x = _server_x;
         _target.knockback_target_y = _server_y;
     }
+    // El impacto suena en todos los clientes que lo ven.
+    if (_kind == ATTACK_NORMAL) audio_play_sound(snd_impact_normal, 5, false);
+    else audio_play_sound(snd_strong_punch, 5, false);
+
+    // Voz de Goku al recibir el golpe: probabilistica y sin solaparse.
+    if (_kind == ATTACK_NORMAL) {
+        if (irandom(99) < 10 && !audio_is_playing(snd_goku_hurt_soft)
+            && !audio_is_playing(snd_goku_hurt_strong)) {
+            audio_play_sound(snd_goku_hurt_soft, 6, false);
+        }
+    } else {
+        if (irandom(99) < 60 && !audio_is_playing(snd_goku_hurt_strong)
+            && !audio_is_playing(snd_goku_hurt_soft)) {
+            audio_play_sound(snd_goku_hurt_strong, 6, false);
+        }
+    }
     _target.sprite_index = _target.hurt_sprite;
     _target.image_index = 0;
 }
 
 function fighter_begin_combo_stage(_f, _stage) {
+    // Golpe basico: suena al apretar (no al impactar).
+    audio_play_sound(snd_punch_basic, 4, false);
     _f.combo_stage = _stage;
     switch (_stage) {
         case 1: _f.combo_timer = _f.combo_duration_1; break;
@@ -131,6 +149,8 @@ function fighter_begin_combo_stage(_f, _stage) {
 }
 
 function fighter_begin_strong(_f, _kind) {
+    // Golpe fuerte: suena al apretar (no al impactar).
+    audio_play_sound(snd_punch_strong, 4, false);
     _f.attack_kind = _kind;
     _f.combo_stage = 0;
     _f.combo_timer = _f.strong_duration;

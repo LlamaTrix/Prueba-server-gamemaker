@@ -830,7 +830,14 @@ setInterval(() => {
   } else if (matchState.phase === 'post' && now >= matchState.phaseEndsAt) {
     backToLobby();
   }
-  if (countPlayers() > 0) broadcastLobbyState();
+  if (countPlayers() > 0) {
+    broadcastLobbyState();
+    // Difusion periodica de vida/ki: aunque un evento de combate se pierda,
+    // todos los clientes convergen al estado real en un segundo como maximo.
+    for (const c of clients.values()) {
+      if (c.name !== null) broadcastStats(c);
+    }
+  }
 }, 1000);
 
 // El servidor es la autoridad del AFK: 60 s para marcar y 20 s más para expulsar.

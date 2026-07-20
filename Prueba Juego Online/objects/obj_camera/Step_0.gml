@@ -1,7 +1,7 @@
 if (instance_number(obj_player) > 0) {
     var _p = instance_find(obj_player, 0);
-    var _cx = clamp(_p.x - 200, 0, room_width - 400);
-    var _cy = clamp(_p.y - 200, 0, room_height - 400);
+    var _cx = clamp(_p.x - 300, 0, room_width - 600);
+    var _cy = clamp(_p.y - 300, 0, room_height - 600);
 
     // Sacudida: desplaza la cámara con ruido que decae hasta cero.
     if (shake_time > 0) {

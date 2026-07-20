@@ -12,3 +12,6 @@ owner_instance = noone;
 owner_is_local = false;
 projectile_id = -1;
 owner_uid = 0;
+
+// Lanzar el blast suena en todos los clientes que lo ven aparecer.
+audio_play_sound(snd_ki_blast, 4, false);

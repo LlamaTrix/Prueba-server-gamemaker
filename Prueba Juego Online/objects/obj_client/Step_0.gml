@@ -26,7 +26,7 @@ if (!chat_open && (net.match_phase == 0 || net.match_phase == 1)) {
     var _mx = device_mouse_x_to_gui(0);
     var _my = device_mouse_y_to_gui(0);
     if (mouse_check_button_pressed(mb_left)
-        && point_in_rectangle(_mx, _my, 110, 344, 290, 384)) {
+        && point_in_rectangle(_mx, _my, 210, 528, 390, 568)) {
         net.my_ready = !net.my_ready;
         net_send_ready(net, net.my_ready);
     }

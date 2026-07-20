@@ -1,0 +1,22 @@
+{
+  "$GMSound":"",
+  "%Name":"snd_strong_punch",
+  "audioGroupId":{"name":"audiogroup_default","path":"audiogroups/audiogroup_default",},
+  "bitDepth":1,
+  "bitRate":128,
+  "compression":1,
+  "conversionMode":0,
+  "duration":1.0,
+  "name":"snd_strong_punch",
+  "parent":{
+    "name":"Prueba Juego Online",
+    "path":"Prueba Juego Online.yyp",
+  },
+  "preload":true,
+  "resourceType":"GMSound",
+  "resourceVersion":"2.0",
+  "sampleRate":44100,
+  "soundFile":"snd_strong_punch.mp3",
+  "type":1,
+  "volume":1.0,
+}

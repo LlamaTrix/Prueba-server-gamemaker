@@ -1,4 +1,9 @@
+// El menu conserva su lienzo logico de 400x400 (se escala a la ventana).
 display_set_gui_size(400, 400);
+if (os_browser == browser_not_a_browser && window_get_width() != 600) {
+    window_set_size(600, 600);
+    window_center();
+}
 
 MENU_AUTH = 0;
 MENU_AUTH_WAIT = 1;

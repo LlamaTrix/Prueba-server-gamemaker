@@ -486,7 +486,10 @@ function net_read_payload(_state, _payload) {
             var _destroy_y = buffer_read(_payload, buffer_u16);
             var _destroy_hit = buffer_read(_payload, buffer_u8);
             var _destroy_projectile = net_find_projectile(_destroy_id);
-            if (_destroy_hit != 0) fighter_spawn_explosion(_destroy_x, _destroy_y);
+            if (_destroy_hit != 0) {
+                fighter_spawn_explosion(_destroy_x, _destroy_y);
+                audio_play_sound(snd_ki_impact, 5, false);
+            }
             if (_destroy_projectile != noone) with (_destroy_projectile) instance_destroy();
             break;
 
@@ -497,6 +500,9 @@ function net_read_payload(_state, _payload) {
             if (_attacker_uid != _state.uid) {
                 var _attacker = net_find_remote(_attacker_uid);
                 if (_attacker != noone) {
+                    // Sonido de "apretar" del rival (el impacto suena aparte).
+                    if (_attacker_kind == ATTACK_NORMAL) audio_play_sound(snd_punch_basic, 4, false);
+                    else audio_play_sound(snd_punch_strong, 4, false);
                     _attacker.attack_kind = _attacker_kind;
                     _attacker.combo_stage = _attacker_stage;
                     switch (_attacker_stage) {
@@ -519,17 +525,14 @@ function net_read_payload(_state, _payload) {
             break;
 
         case MSG_STATS:
+            // El servidor es la unica autoridad de vida y ki: este mensaje llega
+            // al menos una vez por segundo y corrige cualquier evento perdido.
             var _stats_uid = buffer_read(_payload, buffer_u16);
-            buffer_read(_payload, buffer_u8); // campo reservado del protocolo anterior
+            var _stats_health = buffer_read(_payload, buffer_u8);
             var _stats_ki = buffer_read(_payload, buffer_u8);
-            net_cache_ki(_state, _stats_uid, _stats_ki);
-            var _stats_target = noone;
-            if (_stats_uid == _state.uid && instance_number(obj_player) > 0) {
-                _stats_target = instance_find(obj_player, 0);
-            } else {
-                _stats_target = net_find_remote(_stats_uid);
-            }
+            var _stats_target = net_find_fighter(_state, _stats_uid);
             if (_stats_target != noone) {
+                _stats_target.health = _stats_health;
                 _stats_target.ki = _stats_ki;
             }
             break;

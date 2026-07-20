@@ -3,9 +3,9 @@ game_ticket = variable_global_exists("game_ticket") ? global.game_ticket : "";
 chat_input = "";
 chat_open = false;
 
-display_set_gui_size(400, 400);
+display_set_gui_size(600, 600);
 if (os_browser == browser_not_a_browser) {
-    window_set_size(400, 400);
+    window_set_size(600, 600);
     window_center();
 }
 
