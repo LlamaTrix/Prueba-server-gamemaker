@@ -42,7 +42,14 @@ net = {
     tcp_host: variable_global_exists("server_tcp_host") ? global.server_tcp_host : SERVER_HOST,
     tcp_port: variable_global_exists("server_tcp_port") ? global.server_tcp_port : SERVER_PORT,
     ws_url: variable_global_exists("server_ws_url") ? global.server_ws_url : SERVER_WS_URL,
-    ws_port: variable_global_exists("server_ws_port") ? global.server_ws_port : SERVER_WS_PORT
+    ws_port: variable_global_exists("server_ws_port") ? global.server_ws_port : SERVER_WS_PORT,
+    // Fases de partida (las dicta el servidor): 0 lobby, 1 countdown, 2 partida, 3 ganador
+    match_phase: 0,
+    match_seconds: 0,
+    match_players: [],
+    my_ready: false,
+    winner_name: "",
+    winner_kills: 0
 };
 
 if (username != "" && game_ticket != "") net_connect(net);

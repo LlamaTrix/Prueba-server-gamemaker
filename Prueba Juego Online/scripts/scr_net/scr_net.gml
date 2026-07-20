@@ -34,6 +34,11 @@
 #macro MSG_SERVER_QUERY 26
 #macro MSG_SERVER_INFO  27
 #macro MSG_COMBAT_EVENT 28
+#macro MSG_READY        33
+#macro MSG_LOBBY_STATE  34
+#macro MSG_KO_EVENT     35
+#macro MSG_RESPAWN      36
+#macro MSG_MATCH_END    37
 #macro MSG_PROJECTILE_SPAWN 29
 #macro MSG_PROJECTILE_DESTROY 30
 #macro MSG_WORLD_STATE 31
@@ -154,6 +159,24 @@ function net_send_position(_state, _x, _y, _facing) {
     buffer_write(_payload, buffer_u16, clamp(round(_x), 0, 65535));
     buffer_write(_payload, buffer_u16, clamp(round(_y), 0, 65535));
     buffer_write(_payload, buffer_s8, _facing);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
+}
+
+/// Kills propios segun el ultimo estado del lobby que mando el servidor.
+function net_my_kills(_state) {
+    for (var _ki = 0; _ki < array_length(_state.match_players); _ki++) {
+        if (_state.match_players[_ki].uid == _state.uid) return _state.match_players[_ki].kills;
+    }
+    return 0;
+}
+
+/// Avisa al servidor que este jugador dio (o cancelo) JUGAR en el lobby.
+function net_send_ready(_state, _ready) {
+    var _payload = buffer_create(2, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_READY);
+    buffer_write(_payload, buffer_u8, _ready ? 1 : 0);
     var _ok = net_send_payload(_state, _payload);
     buffer_delete(_payload);
     return _ok;
@@ -362,8 +385,9 @@ function net_read_payload(_state, _payload) {
                     _remote.facing = _facing;
                     _remote.world_seen = true;
                     net_apply_cached_stats(_state, _uid, _remote);
+                } else if (instance_number(obj_player) > 0) {
+                    net_apply_cached_stats(_state, _uid, instance_find(obj_player, 0));
                 }
-                // La vida/ki del jugador local son locales: el servidor no las pisa.
             }
             with (obj_remote) {
                 if (!world_seen) instance_destroy();
@@ -415,13 +439,13 @@ function net_read_payload(_state, _payload) {
 
             var _combat_target = net_find_fighter(_state, _combat_target_uid);
             if (_combat_target != noone) {
+                // La vida SIEMPRE es la que dicta el servidor, para el jugador
+                // local y para los remotos: asi el golpe se refleja en ambos.
+                net_cache_authoritative_state(_state, _combat_target_uid,
+                    _combat_health, _combat_ki, _combat_revision);
+                _combat_target.health = _combat_health;
+                _combat_target.ki = _combat_ki;
                 if (_combat_target_uid == _state.uid) {
-                    // Vida local: variable simple. Se resta el daño del golpe y el
-                    // servidor NO la pisa (ver MSG_WORLD_STATE). El KO y la
-                    // reaparición los maneja obj_player.
-                    if (!_combat_target.is_ko) {
-                        _combat_target.health = max(0, _combat_target.health - _combat_damage);
-                    }
                     _state.pending_inputs = [];
                     _state.last_sent_dx = 0;
                     _state.last_sent_dy = 0;
@@ -432,12 +456,6 @@ function net_read_payload(_state, _payload) {
                         shake_time_max = 12;
                         shake_mag = (_combat_kind == ATTACK_NORMAL) ? 7 : 14;
                     }
-                } else {
-                    // Remotos: vida autoritativa del servidor.
-                    net_cache_authoritative_state(_state, _combat_target_uid,
-                        _combat_health, _combat_ki, _combat_revision);
-                    _combat_target.health = _combat_health;
-                    _combat_target.ki = _combat_ki;
                 }
                 if (_combat_kind != ATTACK_NORMAL) {
                     fighter_spawn_explosion(_combat_target.x, _combat_target.y - 40);
@@ -585,6 +603,64 @@ function net_read_payload(_state, _payload) {
                 }
             }
             break;
+
+        case MSG_LOBBY_STATE: {
+            _state.match_phase = buffer_read(_payload, buffer_u8);
+            _state.match_seconds = buffer_read(_payload, buffer_u16);
+            var _lobby_count = buffer_read(_payload, buffer_u16);
+            _state.match_players = [];
+            for (var _li = 0; _li < _lobby_count; _li++) {
+                var _entry = {
+                    uid: buffer_read(_payload, buffer_u16),
+                    name: buffer_read(_payload, buffer_string),
+                    ready: buffer_read(_payload, buffer_u8) != 0,
+                    kills: buffer_read(_payload, buffer_u16)
+                };
+                array_push(_state.match_players, _entry);
+                if (_entry.uid == _state.uid) _state.my_ready = _entry.ready;
+            }
+        } break;
+
+        case MSG_KO_EVENT: {
+            var _ko_victim = buffer_read(_payload, buffer_u16);
+            var _ko_killer = buffer_read(_payload, buffer_u16);
+            var _ko_killer_name = buffer_read(_payload, buffer_string);
+            var _ko_kills = buffer_read(_payload, buffer_u16);
+            if (_ko_victim == _state.uid && instance_number(obj_player) > 0) {
+                var _ko_player = instance_find(obj_player, 0);
+                _ko_player.is_ko = true;
+                _ko_player.respawn_timer = _ko_player.respawn_total;
+            }
+        } break;
+
+        case MSG_RESPAWN: {
+            var _respawn_uid = buffer_read(_payload, buffer_u16);
+            var _respawn_x = buffer_read(_payload, buffer_u16);
+            var _respawn_y = buffer_read(_payload, buffer_u16);
+            var _respawn_target = net_find_fighter(_state, _respawn_uid);
+            if (_respawn_target != noone) {
+                _respawn_target.health = 100;
+                if (_respawn_uid == _state.uid) {
+                    _respawn_target.x = _respawn_x;
+                    _respawn_target.y = _respawn_y;
+                    _respawn_target.is_ko = false;
+                    _respawn_target.net_correction_x = 0;
+                    _respawn_target.net_correction_y = 0;
+                    _state.pending_inputs = [];
+                } else {
+                    _respawn_target.x = _respawn_x;
+                    _respawn_target.y = _respawn_y;
+                    _respawn_target.target_x = _respawn_x;
+                    _respawn_target.target_y = _respawn_y;
+                }
+            }
+        } break;
+
+        case MSG_MATCH_END: {
+            buffer_read(_payload, buffer_u16); // uid del ganador (no se usa aun)
+            _state.winner_name = buffer_read(_payload, buffer_string);
+            _state.winner_kills = buffer_read(_payload, buffer_u16);
+        } break;
 
         case MSG_PONG:
             var _pong_nonce = buffer_read(_payload, buffer_u32);

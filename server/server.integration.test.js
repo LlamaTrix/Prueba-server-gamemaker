@@ -24,6 +24,8 @@ const MSG_PROJECTILE_SPAWN = 29;
 const MSG_PROJECTILE_DESTROY = 30;
 const MSG_WORLD_STATE = 31;
 const MSG_WORLD_SNAPSHOT = 32;
+const MSG_READY = 33;
+const MSG_LOBBY_STATE = 34;
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -198,6 +200,10 @@ class GameClient {
 
   chargeKi(active) {
     this.send(Buffer.from([MSG_KI_CHARGE, active ? 1 : 0]));
+  }
+
+  ready(active) {
+    this.send(Buffer.from([MSG_READY, active ? 1 : 0]));
   }
 
   fireKi(forward = false) {
@@ -462,6 +468,8 @@ test('REST, ticket de un uso y combate autoritativo completo', { timeout: 120_00
       AUTH_SECRET_PATH: path.join(temporary, 'auth-secret'),
       AFK_AFTER_MS: '600000',
       KICK_AFTER_MS: '660000',
+      LOBBY_COUNTDOWN_MS: '1000',
+      MATCH_DURATION_MS: '600000',
     });
     serverOutput = await waitForServer(serverProcess, [
       `puerto ${tcpPort}`,
@@ -545,6 +553,17 @@ test('REST, ticket de un uso y combate autoritativo completo', { timeout: 120_00
       after: mark,
       description: 'WELCOME del jugador B',
     }));
+
+    // Los ataques solo funcionan durante la partida: ambos dan JUGAR y esperan
+    // a que termine el countdown del lobby.
+    mark = clientA.mark();
+    clientA.ready(true);
+    clientB.ready(true);
+    await clientA.waitFor(payload => payload[0] === MSG_LOBBY_STATE && payload.readUInt8(1) === 2, {
+      after: mark,
+      timeout: 8000,
+      description: 'inicio de la partida tras dar JUGAR todos',
+    });
 
     await bringPlayersTogether(clientA, clientA, welcomeA.uid, clientB, welcomeB.uid);
 

@@ -1,19 +1,23 @@
 net_input_dx = 0;
 net_input_dy = 0;
 
-// --- KO y reaparición (vida local) ---
+// Fuera de la fase de partida (lobby/countdown/ganador) no se juega.
+var _match_phase = 2;
+if (instance_number(obj_client) > 0) {
+    _match_phase = instance_find(obj_client, 0).net.match_phase;
+}
+if (_match_phase != 2) {
+    hsp = 0; vsp = 0;
+    exit;
+}
+
+// --- KO y reaparicion (los dicta el servidor con MSG_KO_EVENT / MSG_RESPAWN) ---
 if (is_ko || health <= 0) {
     if (!is_ko) { is_ko = true; respawn_timer = respawn_total; }
     hsp = 0; vsp = 0;
-    net_input_dx = 0; net_input_dy = 0;
-    respawn_timer -= 1;
-    if (respawn_timer <= 0) {
-        is_ko = false;
-        health = 100;
-        stun_frames = 0; knockback_active = false;
-        x = irandom_range(150, room_width - 150);
-        y = irandom_range(150, room_height - 150);
-    }
+    respawn_timer = max(0, respawn_timer - 1);
+    // El servidor reaparece: cuando llega MSG_RESPAWN la vida vuelve a 100.
+    if (health > 0) { is_ko = false; stun_frames = 0; knockback_active = false; }
     event_inherited(); // obj_fighter pinta el sprite KO mientras health<=0
     exit;
 }

@@ -69,8 +69,23 @@ const MSG_PROJECTILE_SPAWN = 29;
 const MSG_PROJECTILE_DESTROY = 30;
 const MSG_WORLD_STATE = 31;
 const MSG_WORLD_SNAPSHOT = 32;
+const MSG_READY = 33;        // cliente -> servidor: u8 listo (1) / cancelar (0)
+const MSG_LOBBY_STATE = 34;  // servidor -> todos: u8 fase + u16 segundos + lista (uid, nombre, listo, kills)
+const MSG_KO_EVENT = 35;     // servidor -> todos: u16 victima + u16 asesino + str nombre + u16 kills
+const MSG_RESPAWN = 36;      // servidor -> todos: u16 uid + u16 x + u16 y
+const MSG_MATCH_END = 37;    // servidor -> todos: u16 uid ganador + str nombre + u16 kills
 const DASH_COOLDOWN_MS = 1000;
 const DASH_DISTANCE = 80;
+
+// ---------- fases de la partida ----------
+// lobby: chat + todos deben dar JUGAR -> countdown -> match (5 min, cada kill
+// vale 1 punto) -> post (ganador, 3 s) -> lobby de nuevo.
+const LOBBY_COUNTDOWN_MS = Number(process.env.LOBBY_COUNTDOWN_MS || 5000);
+const MATCH_DURATION_MS = Number(process.env.MATCH_DURATION_MS || 300000);
+const RESPAWN_MS = Number(process.env.RESPAWN_MS || 3000);
+const POST_MATCH_MS = 3000;
+const matchState = { phase: 'lobby', phaseEndsAt: 0, matchEndsAt: 0 };
+const PHASE_BYTE = { lobby: 0, countdown: 1, match: 2, post: 3 };
 
 const AFK_AFTER_MS = process.env.AFK_AFTER_MS ? Number(process.env.AFK_AFTER_MS) : 60_000;
 const KICK_AFTER_MS = process.env.KICK_AFTER_MS ? Number(process.env.KICK_AFTER_MS) : 80_000;
@@ -234,6 +249,117 @@ function broadcastWorldAndStats() {
   broadcast(worldWriter());
 }
 
+// ---------- lobby / partidas ----------
+
+function randomSpawn() {
+  return {
+    x: 100 + Math.floor(Math.random() * (WORLD_WIDTH - 200)),
+    y: 100 + Math.floor(Math.random() * (WORLD_HEIGHT - 200))
+  };
+}
+
+function lobbySeconds() {
+  const now = Date.now();
+  if (matchState.phase === 'countdown' || matchState.phase === 'post') {
+    return Math.max(0, Math.ceil((matchState.phaseEndsAt - now) / 1000));
+  }
+  if (matchState.phase === 'match') {
+    return Math.max(0, Math.ceil((matchState.matchEndsAt - now) / 1000));
+  }
+  return 0;
+}
+
+function lobbyStateWriter() {
+  const players = [...clients.values()].filter(c => c.name !== null);
+  const w = new Writer().u8(MSG_LOBBY_STATE)
+    .u8(PHASE_BYTE[matchState.phase])
+    .u16(lobbySeconds())
+    .u16(players.length);
+  for (const c of players) w.u16(c.uid).str(c.name).u8(c.ready ? 1 : 0).u16(c.kills);
+  return w;
+}
+
+function broadcastLobbyState() {
+  broadcast(lobbyStateWriter());
+}
+
+// Si todos los presentes dieron JUGAR, arranca el countdown; si alguien
+// cancela o entra alguien nuevo sin dar JUGAR, se vuelve al lobby.
+function reevaluateLobby() {
+  const players = [...clients.values()].filter(c => c.name !== null);
+  const everyoneReady = players.length >= 1 && players.every(c => c.ready);
+  if (matchState.phase === 'lobby' && everyoneReady) {
+    matchState.phase = 'countdown';
+    matchState.phaseEndsAt = Date.now() + LOBBY_COUNTDOWN_MS;
+    systemChat('Todos listos: la partida comienza en ' + Math.round(LOBBY_COUNTDOWN_MS / 1000) + ' segundos');
+  } else if (matchState.phase === 'countdown' && !everyoneReady) {
+    matchState.phase = 'lobby';
+    systemChat('Inicio cancelado: faltan jugadores por dar JUGAR');
+  }
+  broadcastLobbyState();
+}
+
+function respawnPlayer(c) {
+  const spawn = randomSpawn();
+  c.x = spawn.x;
+  c.y = spawn.y;
+  c.health = 100;
+  c.ki = 0;
+  c.dead = false;
+  c.stunUntil = 0;
+  c.inputDx = 0;
+  c.inputDy = 0;
+  c.stateRevision += 1;
+  broadcast(new Writer().u8(MSG_RESPAWN).u16(c.uid).u16(c.x).u16(c.y));
+  broadcastStats(c);
+}
+
+function startMatch() {
+  matchState.phase = 'match';
+  matchState.matchEndsAt = Date.now() + MATCH_DURATION_MS;
+  for (const projectile of [...projectiles.values()]) destroyProjectile(projectile, false);
+  for (const c of clients.values()) {
+    if (c.name === null) continue;
+    c.kills = 0;
+    respawnPlayer(c);
+  }
+  broadcastWorldAndStats();
+  broadcastLobbyState();
+  systemChat('¡Comienza la partida! 5 minutos, cada kill vale 1 punto');
+  console.log('[match] partida iniciada');
+}
+
+function endMatch() {
+  const players = [...clients.values()].filter(c => c.name !== null);
+  let winner = null;
+  for (const c of players) {
+    if (winner === null || c.kills > winner.kills) winner = c;
+  }
+  matchState.phase = 'post';
+  matchState.phaseEndsAt = Date.now() + POST_MATCH_MS;
+  if (winner) {
+    broadcast(new Writer().u8(MSG_MATCH_END).u16(winner.uid).str(winner.name).u16(winner.kills));
+    systemChat('Ganador: ' + winner.name + ' con ' + winner.kills + ' puntos');
+    console.log(`[match] fin — ganador ${winner.name} (${winner.kills} kills)`);
+  }
+  broadcastLobbyState();
+}
+
+function backToLobby() {
+  matchState.phase = 'lobby';
+  for (const c of clients.values()) {
+    if (c.name === null) continue;
+    c.ready = false;
+    c.dead = false;
+    c.health = 100;
+    c.ki = 0;
+    c.stateRevision += 1;
+  }
+  broadcastWorldAndStats();
+  broadcastLobbyState();
+  systemChat('De vuelta en el lobby: den JUGAR para otra partida');
+}
+
 function commitCombatEvent(attacker, target, kind, damage, charge) {
   const oldX = target.x;
   const oldY = target.y;
@@ -262,21 +388,36 @@ function commitCombatEvent(attacker, target, kind, damage, charge) {
     .u16(target.x).u16(target.y));
   if (kind >= 2 && kind <= 4) broadcastPosition(target);
   target.stunUntil = Date.now() + (kind === 1 ? 200 : 300);
+
+  // KO: el atacante gana 1 punto y la victima reaparece en 3 segundos.
+  if (target.health <= 0 && !target.dead && matchState.phase === 'match') {
+    target.dead = true;
+    target.respawnAt = Date.now() + RESPAWN_MS;
+    target.inputDx = 0;
+    target.inputDy = 0;
+    attacker.kills += 1;
+    broadcast(new Writer().u8(MSG_KO_EVENT).u16(target.uid).u16(attacker.uid)
+      .str(attacker.name).u16(attacker.kills));
+    systemChat(attacker.name + ' elimino a ' + target.name);
+    broadcastLobbyState();
+    console.log(`[kill] ${attacker.name} -> ${target.name} (${attacker.kills} kills)`);
+  }
   return eventId;
 }
 
 function findAttackTarget(attacker, kind) {
-  // Hitbox ovalada (elipse) más pequeña, con leve sesgo hacia adelante.
-  // Más ancha que alta para acompañar la silueta del luchador.
-  const cx = attacker.x + attacker.facing * 22;
+  // Hitbox ovalada centrada en el atacante con un sesgo leve hacia adelante.
+  // Con el sesgo grande anterior (22px) y radios chicos, un rival a 27px
+  // podia quedar fuera y el golpe fallaba aun estando pegados.
+  const cx = attacker.x + attacker.facing * 10;
   const cy = attacker.y;
-  const rx = 46; // semieje horizontal
-  const ry = 30; // semieje vertical
+  const rx = 60; // semieje horizontal
+  const ry = 40; // semieje vertical
   let best = null;
   let bestScore = Infinity;
 
   for (const candidate of clients.values()) {
-    if (candidate.name === null || candidate.uid === attacker.uid) continue;
+    if (candidate.name === null || candidate.uid === attacker.uid || candidate.dead) continue;
     const nx = (candidate.x - cx) / rx;
     const ny = (candidate.y - cy) / ry;
     const score = nx * nx + ny * ny; // <= 1 dentro de la elipse
@@ -387,11 +528,18 @@ function handleMessage(socket, payload) {
     c.facing = 1;
     c.lastMovementAt = Date.now();
 
+    c.ready = false;
+    c.kills = 0;
+    c.dead = false;
+
     send(socket, new Writer().u8(MSG_WELCOME).u16(c.uid).u16(c.x).u16(c.y));
     broadcast(playerListWriter());
     broadcastWorldAndStats();
     systemChat(`${c.name} entró al lobby`);
     console.log(`[+] ${c.name} (uid ${c.uid}) entró — ${countPlayers()} en línea`);
+    // Entrar sin dar JUGAR cancela un countdown en curso; en partida entra directo.
+    if (matchState.phase === 'countdown') reevaluateLobby();
+    else broadcastLobbyState();
 
   } else if (msg === MSG_CHAT && c.name !== null) {
     const r = readString(payload, 1);
@@ -430,8 +578,18 @@ function handleMessage(socket, payload) {
   } else if (msg === MSG_PING && c.name !== null && payload.length >= 5) {
     send(socket, new Writer().u8(MSG_PONG).u32(payload.readUInt32LE(1)));
 
+  } else if (msg === MSG_READY && c.name !== null && payload.length >= 2) {
+    if (matchState.phase !== 'lobby' && matchState.phase !== 'countdown') return;
+    const wantsReady = payload.readUInt8(1) !== 0;
+    if (c.ready !== wantsReady) {
+      c.ready = wantsReady;
+      console.log(`[lobby] ${c.name} ${wantsReady ? 'esta listo' : 'cancelo'}`);
+      reevaluateLobby();
+    }
+
   } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 8) {
     const now = Date.now();
+    if (matchState.phase !== 'match' || c.dead) return;
     if (now < c.stunUntil) return;
 
     const kind = payload.readUInt8(1);
@@ -467,6 +625,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_KI_FIRE && c.name !== null && payload.length >= 2) {
     const now = Date.now();
+    if (matchState.phase !== 'match' || c.dead) return;
     if (now < c.stunUntil) return;
     if (c.ki < 5 || now - c.lastKiFireAt < 70) return;
     c.lastKiFireAt = now;
@@ -479,6 +638,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_DASH && c.name !== null && payload.length >= 2) {
     const now = Date.now();
+    if (matchState.phase !== 'match' || c.dead) return;
     if (now < c.stunUntil) return;
     const direction = payload.readInt8(1) < 0 ? -1 : 1;
     if (c.ki < 5 || now - c.lastDashAt < DASH_COOLDOWN_MS) return;
@@ -537,7 +697,11 @@ function newClientRecord() {
     lastInputSeq: 0,
     lastInputAt: 0,
     inputDx: 0,
-    inputDy: 0
+    inputDy: 0,
+    ready: false,
+    kills: 0,
+    dead: false,
+    respawnAt: 0
   };
 }
 
@@ -572,6 +736,10 @@ function disconnect(conn) {
     broadcast(playerListWriter());
     broadcastWorldAndStats();
     systemChat(`${c.name} salió del lobby`);
+    // Su salida puede completar el "todos listos" o vaciar la partida.
+    if (matchState.phase === 'lobby' || matchState.phase === 'countdown') reevaluateLobby();
+    else if (countPlayers() === 0) { matchState.phase = 'lobby'; }
+    else broadcastLobbyState();
   }
 }
 
@@ -629,7 +797,7 @@ setInterval(() => {
   const elapsedSeconds = Math.min(0.05, Math.max(0, now - lastMovementTick) / 1000);
   lastMovementTick = now;
   for (const c of clients.values()) {
-    if (c.name === null || now < c.stunUntil) continue;
+    if (c.name === null || c.dead || now < c.stunUntil) continue;
     if (now - c.lastInputAt > 750) {
       c.inputDx = 0;
       c.inputDy = 0;
@@ -649,7 +817,24 @@ setInterval(() => {
   if (countPlayers() > 0) broadcast(worldSnapshotWriter());
 }, 50);
 
+// Transiciones de fase y reapariciones, una vez por segundo.
+setInterval(() => {
+  const now = Date.now();
+  if (matchState.phase === 'countdown' && now >= matchState.phaseEndsAt) {
+    startMatch();
+  } else if (matchState.phase === 'match') {
+    for (const c of clients.values()) {
+      if (c.name !== null && c.dead && now >= c.respawnAt) respawnPlayer(c);
+    }
+    if (now >= matchState.matchEndsAt) endMatch();
+  } else if (matchState.phase === 'post' && now >= matchState.phaseEndsAt) {
+    backToLobby();
+  }
+  if (countPlayers() > 0) broadcastLobbyState();
+}, 1000);
+
 // El servidor es la autoridad del AFK: 60 s para marcar y 20 s más para expulsar.
+// Solo aplica durante la partida; en el lobby se puede estar quieto chateando.
 setInterval(() => {
   const now = Date.now();
   for (const [socket, c] of clients) {
@@ -657,6 +842,7 @@ setInterval(() => {
       if (now - c.connectedAt >= 15_000) socket.end();
       continue;
     }
+    if (matchState.phase !== 'match') continue;
     if (c.kicking || socket.destroyed) continue;
     const idleFor = now - c.lastMovementAt;
 
@@ -685,7 +871,7 @@ setInterval(() => {
     let hitTarget = null;
     let bestDistance = Infinity;
     for (const target of clients.values()) {
-      if (target.name === null || target.uid === projectile.owner.uid) continue;
+      if (target.name === null || target.uid === projectile.owner.uid || target.dead) continue;
       const distance = Math.hypot(target.x - projectile.x, (target.y - 40) - projectile.y);
       if (distance <= 28 && distance < bestDistance) {
         hitTarget = target;
