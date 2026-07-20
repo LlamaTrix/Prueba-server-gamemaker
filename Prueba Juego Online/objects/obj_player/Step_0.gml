@@ -86,7 +86,7 @@ if (!_chat_blocked && stun_frames <= 0) {
     var _did_dash = false;
     var _lateral_press = keyboard_check_pressed(vk_right) - keyboard_check_pressed(vk_left);
     if (_lateral_press != 0 && attack_kind == ATTACK_NONE && !charging
-        && !ki_charging && !ki_casting && turn_frames <= 0) {
+        && !ki_charging && !ki_casting && !guard_active && turn_frames <= 0) {
         if (dash_tap_timer > 0 && dash_tap_direction == _lateral_press
             && dash_cooldown <= 0 && ki >= 5) {
             ki -= 5;
@@ -110,7 +110,7 @@ if (!_chat_blocked && stun_frames <= 0) {
     }
 
     var _busy = attack_kind != ATTACK_NONE || charging || ki_charging || ki_casting
-        || turn_frames > 0 || _did_dash;
+        || guard_active || turn_frames > 0 || _did_dash;
 
     if (!_busy) {
         net_input_dx = keyboard_check(vk_right) - keyboard_check(vk_left);
@@ -129,7 +129,15 @@ if (!_chat_blocked && stun_frames <= 0) {
             }
         }
 
-        if (keyboard_check_pressed(ord("D")) && ki < 100) {
+        // S: escudo. Mantener pulsado; los primeros 5 frames son parry.
+        if (keyboard_check_pressed(ord("S")) && guard_cooldown <= 0) {
+            guard_active = true;
+            hsp = 0; vsp = 0;
+            net_input_dx = 0; net_input_dy = 0;
+            with (obj_client) {
+                if (net.session_ready) net_send_guard(net, true);
+            }
+        } else if (keyboard_check_pressed(ord("D")) && ki < 100) {
             ki_charging = true;
             hsp = 0; vsp = 0;
             with (obj_client) {
@@ -170,6 +178,17 @@ if (!_chat_blocked && stun_frames <= 0) {
             charge_frames = min(strong_charge_max, charge_frames + 1);
         } else {
             fighter_release_charge(self);
+        }
+    } else if (guard_active) {
+        // Mantener el escudo mientras S siga pulsada; al soltar, 30 frames de espera.
+        hsp = 0; vsp = 0;
+        net_input_dx = 0; net_input_dy = 0;
+        if (!keyboard_check(ord("S"))) {
+            guard_active = false;
+            guard_cooldown = 30;
+            with (obj_client) {
+                if (net.session_ready) net_send_guard(net, false);
+            }
         }
     } else if (keyboard_check_pressed(ord("Z"))
         && combo_stage > 0 && combo_stage < 3

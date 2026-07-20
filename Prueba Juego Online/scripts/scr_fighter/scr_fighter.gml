@@ -63,6 +63,7 @@ function fighter_init(_f) {
     _f.dash_cooldown = 0; _f.dash_cooldown_frames = 60;
     _f.dash_tap_timer = 0; _f.dash_tap_direction = 0; _f.dash_tap_window = 12;
     _f.dash_visual_frames = 5; _f.dash_distance = 80;
+    _f.guard_active = false; _f.guard_cooldown = 0;
     _f.bubble_text = ""; _f.bubble_timer = 0;
     _f.remote_controlled = false;
     _f.health = 100; _f.ki = 0;

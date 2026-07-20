@@ -11,6 +11,7 @@ if (health <= 0) {
 var _was_stunned = stun_frames > 0;
 if (bubble_timer > 0) bubble_timer -= 1;
 if (dash_cooldown > 0) dash_cooldown -= 1;
+if (guard_cooldown > 0) guard_cooldown -= 1;
 if (dash_tap_timer > 0) {
     dash_tap_timer -= 1;
     if (dash_tap_timer <= 0) dash_tap_direction = 0;
@@ -43,6 +44,8 @@ if (_was_stunned) {
     sprite_index = spr_goku_vanish; image_index = 0; image_xscale = 2 * facing;
     turn_frames -= 1;
     if (turn_frames <= 0) facing = pending_facing;
+} else if (guard_active) {
+    sprite_index = spr_goku_guard; image_index = 0; image_xscale = 2 * facing;
 } else if (ki_charging) {
     sprite_index = spr_goku_charging; image_index = 0; image_xscale = 2 * facing;
 } else if (ki_casting) {

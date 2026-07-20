@@ -29,7 +29,7 @@ if (net.match_phase != 2) {
     draw_text(300, 20, "LOBBY");
     // Canario de version: si no dice p37, el build compilado esta desactualizado.
     draw_set_color(make_color_rgb(80, 90, 105));
-    draw_text(300, 584, "protocolo p37");
+    draw_text(300, 584, "protocolo p39");
 
     if (net.match_phase == 3) {
         // pantalla de ganador
@@ -170,7 +170,7 @@ if (instance_number(obj_player) > 0) {
     var _player = instance_find(obj_player, 0);
     draw_set_halign(fa_right);
     draw_set_color(c_white);
-    draw_text(590, 8, "Ping " + (net.ping_ms >= 0 ? string(round(net.ping_ms)) + " ms" : "-- ms") + "  p37");
+    draw_text(590, 8, "Ping " + (net.ping_ms >= 0 ? string(round(net.ping_ms)) + " ms" : "-- ms") + "  p39");
     draw_text(590, 27, "Mis puntos: " + string(net_my_kills(net)));
     draw_set_halign(fa_left);
 }

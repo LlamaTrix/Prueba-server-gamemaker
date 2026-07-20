@@ -69,6 +69,10 @@ const MSG_PROJECTILE_SPAWN = 29;
 const MSG_PROJECTILE_DESTROY = 30;
 const MSG_WORLD_STATE = 31;
 const MSG_WORLD_SNAPSHOT = 32;
+const MSG_GUARD = 38;        // cliente -> servidor: u8 escudo activo (1) / soltado (0)
+const MSG_GUARD_STATE = 39;  // servidor -> todos: u16 uid + u8 estado (0 off, 1 on, 2 parry)
+const GUARD_PARRY_MS = 83;       // primeros 5 frames: ventana de parry
+const GUARD_COOLDOWN_MS = 500;   // 30 frames de espera tras soltar el escudo
 const MSG_READY = 33;        // cliente -> servidor: u8 listo (1) / cancelar (0)
 const MSG_LOBBY_STATE = 34;  // servidor -> todos: u8 fase + u16 segundos + lista (uid, nombre, listo, kills)
 const MSG_KO_EVENT = 35;     // servidor -> todos: u16 victima + u16 asesino + str nombre + u16 kills
@@ -309,6 +313,8 @@ function respawnPlayer(c) {
   c.stunUntil = 0;
   c.inputDx = 0;
   c.inputDy = 0;
+  c.guarding = false;
+  c.guardCooldownUntil = 0;
   c.stateRevision += 1;
   broadcast(new Writer().u8(MSG_RESPAWN).u16(c.uid).u16(c.x).u16(c.y));
   broadcastStats(c);
@@ -321,6 +327,9 @@ function startMatch() {
   for (const c of clients.values()) {
     if (c.name === null) continue;
     c.kills = 0;
+    // El tiempo quieto en el lobby no cuenta como inactividad de la partida.
+    c.lastMovementAt = Date.now();
+    c.afk = false;
     respawnPlayer(c);
   }
   broadcastWorldAndStats();
@@ -361,6 +370,21 @@ function backToLobby() {
 }
 
 function commitCombatEvent(attacker, target, kind, damage, charge) {
+  const now = Date.now();
+
+  // Parry: golpeado dentro de los primeros 5 frames del escudo -> sin daño,
+  // el escudo se consume y todos ven la onda del parry.
+  if (target.guarding && now - target.guardStartAt <= GUARD_PARRY_MS) {
+    target.guarding = false;
+    target.guardCooldownUntil = now + GUARD_COOLDOWN_MS;
+    broadcast(new Writer().u8(MSG_GUARD_STATE).u16(target.uid).u8(2));
+    console.log(`[parry] ${target.name} bloqueo el golpe de ${attacker.name}`);
+    return 0;
+  }
+
+  // Escudo activo: recibe la mitad del daño.
+  if (target.guarding) damage = Math.max(1, Math.ceil(damage / 2));
+
   const oldX = target.x;
   const oldY = target.y;
   target.health = Math.max(0, target.health - Math.max(0, damage));
@@ -558,7 +582,7 @@ function handleMessage(socket, payload) {
     const dx = Math.max(-1, Math.min(1, payload.readInt8(5)));
     const dy = Math.max(-1, Math.min(1, payload.readInt8(6)));
     c.facing = payload.readInt8(7) < 0 ? -1 : 1;
-    if (Date.now() >= c.stunUntil) {
+    if (Date.now() >= c.stunUntil && !c.guarding) {
       c.inputDx = dx;
       c.inputDy = dy;
     } else {
@@ -579,6 +603,24 @@ function handleMessage(socket, payload) {
   } else if (msg === MSG_PING && c.name !== null && payload.length >= 5) {
     send(socket, new Writer().u8(MSG_PONG).u32(payload.readUInt32LE(1)));
 
+  } else if (msg === MSG_GUARD && c.name !== null && payload.length >= 2) {
+    const now = Date.now();
+    const wantsGuard = payload.readUInt8(1) !== 0;
+    if (wantsGuard) {
+      if (matchState.phase !== 'match' || c.dead || c.guarding) return;
+      if (now < c.guardCooldownUntil || now < c.stunUntil) return;
+      c.guarding = true;
+      c.guardStartAt = now;
+      c.inputDx = 0;
+      c.inputDy = 0;
+      c.lastMovementAt = now;
+      broadcastExcept(new Writer().u8(MSG_GUARD_STATE).u16(c.uid).u8(1), socket);
+    } else if (c.guarding) {
+      c.guarding = false;
+      c.guardCooldownUntil = now + GUARD_COOLDOWN_MS;
+      broadcastExcept(new Writer().u8(MSG_GUARD_STATE).u16(c.uid).u8(0), socket);
+    }
+
   } else if (msg === MSG_READY && c.name !== null && payload.length >= 2) {
     if (matchState.phase !== 'lobby' && matchState.phase !== 'countdown') return;
     const wantsReady = payload.readUInt8(1) !== 0;
@@ -590,7 +632,7 @@ function handleMessage(socket, payload) {
 
   } else if (msg === MSG_ATTACK && c.name !== null && payload.length >= 8) {
     const now = Date.now();
-    if (matchState.phase !== 'match' || c.dead) return;
+    if (matchState.phase !== 'match' || c.dead || c.guarding) return;
     if (now < c.stunUntil) return;
 
     const kind = payload.readUInt8(1);
@@ -610,8 +652,8 @@ function handleMessage(socket, payload) {
     const target = findAttackTarget(c, kind);
     if (target) {
       const damage = kind === 1 ? 3 : 5 + charge;
-      commitCombatEvent(c, target, kind, damage, charge);
-      console.log(`[hit] ${c.name} -> ${target.name} tipo ${kind} dmg ${damage} vida ${target.health}`);
+      const eventId = commitCombatEvent(c, target, kind, damage, charge);
+      if (eventId !== 0) console.log(`[hit] ${c.name} -> ${target.name} tipo ${kind} dmg ${damage} vida ${target.health}`);
     } else {
       const near = nearestOpponent(c);
       console.log(`[miss] ${c.name} (${Math.round(c.x)},${Math.round(c.y)} f${c.facing}) atacó tipo ${kind}; rival más cercano ${near.name || 'ninguno'} a ${Number.isFinite(near.dist) ? Math.round(near.dist) : '-'}px`);
@@ -702,7 +744,10 @@ function newClientRecord() {
     ready: false,
     kills: 0,
     dead: false,
-    respawnAt: 0
+    respawnAt: 0,
+    guarding: false,
+    guardStartAt: 0,
+    guardCooldownUntil: 0
   };
 }
 

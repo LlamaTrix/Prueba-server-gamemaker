@@ -34,6 +34,8 @@
 #macro MSG_SERVER_QUERY 26
 #macro MSG_SERVER_INFO  27
 #macro MSG_COMBAT_EVENT 28
+#macro MSG_GUARD        38
+#macro MSG_GUARD_STATE  39
 #macro MSG_READY        33
 #macro MSG_LOBBY_STATE  34
 #macro MSG_KO_EVENT     35
@@ -170,6 +172,16 @@ function net_my_kills(_state) {
         if (_state.match_players[_ki].uid == _state.uid) return _state.match_players[_ki].kills;
     }
     return 0;
+}
+
+/// Avisa al servidor que el escudo se activo (true) o se solto (false).
+function net_send_guard(_state, _active) {
+    var _payload = buffer_create(2, buffer_fixed, 1);
+    buffer_write(_payload, buffer_u8, MSG_GUARD);
+    buffer_write(_payload, buffer_u8, _active ? 1 : 0);
+    var _ok = net_send_payload(_state, _payload);
+    buffer_delete(_payload);
+    return _ok;
 }
 
 /// Avisa al servidor que este jugador dio (o cancelo) JUGAR en el lobby.
@@ -663,6 +675,23 @@ function net_read_payload(_state, _payload) {
             buffer_read(_payload, buffer_u16); // uid del ganador (no se usa aun)
             _state.winner_name = buffer_read(_payload, buffer_string);
             _state.winner_kills = buffer_read(_payload, buffer_u16);
+        } break;
+
+        case MSG_GUARD_STATE: {
+            var _guard_uid = buffer_read(_payload, buffer_u16);
+            var _guard_state = buffer_read(_payload, buffer_u8);
+            var _guard_target = net_find_fighter(_state, _guard_uid);
+            if (_guard_target != noone) {
+                if (_guard_state == 2) {
+                    // Parry: onda expansiva + sonido, y el escudo se consume.
+                    _guard_target.guard_active = false;
+                    _guard_target.guard_cooldown = 30;
+                    fighter_spawn_explosion(_guard_target.x, _guard_target.y - 40);
+                    audio_play_sound(snd_parry, 6, false);
+                } else {
+                    _guard_target.guard_active = (_guard_state == 1);
+                }
+            }
         } break;
 
         case MSG_PONG:
