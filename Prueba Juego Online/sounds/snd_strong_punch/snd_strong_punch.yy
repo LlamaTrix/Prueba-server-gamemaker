@@ -1,12 +1,17 @@
 {
-  "$GMSound":"",
+  "$GMSound":"v2",
   "%Name":"snd_strong_punch",
-  "audioGroupId":{"name":"audiogroup_default","path":"audiogroups/audiogroup_default",},
+  "audioGroupId":{
+    "name":"audiogroup_default",
+    "path":"audiogroups/audiogroup_default",
+  },
   "bitDepth":1,
-  "bitRate":128,
+  "channelFormat":1,
   "compression":1,
+  "compressionQuality":4,
   "conversionMode":0,
   "duration":1.0,
+  "exportDir":"",
   "name":"snd_strong_punch",
   "parent":{
     "name":"Prueba Juego Online",
@@ -17,6 +22,5 @@
   "resourceVersion":"2.0",
   "sampleRate":44100,
   "soundFile":"snd_strong_punch.mp3",
-  "type":1,
   "volume":1.0,
 }

@@ -372,7 +372,8 @@ function commitCombatEvent(attacker, target, kind, damage, charge) {
     broadcast(new Writer().u8(MSG_KI_STATE).u16(target.uid).u8(0));
   }
 
-  const push = 30 + charge;
+  // Empuje de los golpes fuertes (kinds 2/3/4): distancia base + bono por carga.
+  const push = 100 + charge * 15;
   if (kind === 2) target.x = Math.max(PLAYER_MIN_X, Math.min(PLAYER_MAX_X, target.x + attacker.facing * push));
   if (kind === 3) target.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, target.y - push));
   if (kind === 4) target.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, target.y + push));
